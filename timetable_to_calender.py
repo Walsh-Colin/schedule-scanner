@@ -8,10 +8,8 @@ Reads two screenshots from ./input:
 1. Weekly timetable
 2. Teaching-week / week-commencing table
 
-Uses OpenAI vision to detect every visible scheduled class.
-
-For each detected module code, OpenAI web search is used to find the
-official University of Limerick module name.
+Uses a local Ollama vision model to detect every visible scheduled class.
+No API key is required.
 
 Creates:
 
@@ -19,11 +17,11 @@ Creates:
 
 Calendar event titles:
 
-    MODULE CODE - MODULE NAME - CLASS TYPE - PROFESSOR
+    MODULE CODE - CLASS TYPE - PROFESSOR
 
 Example:
 
-    CS4297 - Module Name - LAB - 2A - Andrew Ju
+    CS4297 - LAB - 2A - Andrew Ju
 
 Each event also includes:
 
@@ -42,11 +40,11 @@ No Google Calendar API is used.
 
 Required packages:
 
-    python -m pip install --upgrade openai pydantic icalendar python-dotenv
+    python -m pip install --upgrade ollama pydantic icalendar opencv-python numpy
 
-Create a .env file beside this script:
+Local model:
 
-    OPENAI_API_KEY=your-api-key-here
+    ollama pull qwen2.5vl:3b
 
 Run:
 
@@ -55,10 +53,10 @@ Run:
 
 from __future__ import annotations
 
-import base64
-import mimetypes
-import os
+import re
+
 import sys
+import tempfile
 import uuid
 
 from datetime import date, datetime, time, timedelta, timezone
@@ -66,9 +64,10 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from dotenv import load_dotenv
 from icalendar import Calendar, Event
-from openai import OpenAI
+import cv2
+import numpy as np
+import ollama
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 
@@ -77,17 +76,15 @@ BASE_DIR = Path(__file__).resolve().parent
 INPUT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_FILE = OUTPUT_DIR / "classes.ics"
-ENV_FILE = BASE_DIR / ".env"
-
-OPENAI_MODEL = "gpt-5.6"
+LAYOUT_DEBUG_FILE = OUTPUT_DIR / "layout_debug.png"
+OLLAMA_MODEL = "qwen2.5vl:3b"
 
 SEMESTER_YEAR = 2026
 TIMEZONE = "Europe/Dublin"
 
 MAX_EXTRACTION_ATTEMPTS = 3
+SAVE_LAYOUT_DEBUG = True
 END_EARLY_MINUTES = 10
-
-load_dotenv(ENV_FILE)
 
 
 DAYS = [
@@ -185,6 +182,43 @@ class TimetableExtraction(BaseModel):
     classes: list[ClassEntry]
 
 
+class TeachingWeeksExtraction(BaseModel):
+    teaching_weeks: list[TeachingWeek]
+
+
+class ClassBlockRead(BaseModel):
+    start_time: str
+    end_time: str
+    module_code: str
+    class_type: str
+    lecturer: str
+    room: str
+    week_text: str
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def validate_time(cls, value: str) -> str:
+        value = value.strip()
+        datetime.strptime(value, "%H:%M")
+        return value
+
+    @field_validator("week_text")
+    @classmethod
+    def validate_week_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Visible week text is required.")
+        return value
+
+
+class DetectedBlock(BaseModel):
+    day: str
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+
+
 def find_input_images() -> list[Path]:
     if not INPUT_DIR.exists():
         raise FileNotFoundError(
@@ -215,174 +249,6 @@ def find_input_images() -> list[Path]:
 
     return images
 
-
-def image_as_data_url(path: Path) -> str:
-    mime, _ = mimetypes.guess_type(path.name)
-
-    if mime not in {
-        "image/png",
-        "image/jpeg",
-        "image/webp",
-    }:
-        mime = "image/png"
-
-    encoded = base64.b64encode(
-        path.read_bytes()
-    ).decode("utf-8")
-
-    return f"data:{mime};base64,{encoded}"
-
-
-SYSTEM_PROMPT = """
-You are reading two University of Limerick timetable screenshots.
-
-One image is a weekly timetable grid.
-
-The other image contains teaching-week numbers and week-commencing dates.
-
-Interpret the timetable VISUALLY.
-
-For the weekly timetable:
-
-- Return every genuine visible scheduled class.
-- There is no predetermined number of classes.
-- Each visible timetable block is one separate scheduled class.
-- Never merge adjacent timetable blocks.
-- Never duplicate a class.
-- Classes touching at a time boundary are separate classes.
-- Lecturer, room, module code, class type and teaching weeks must come
-  from the same timetable block.
-- Inspect the entire timetable from top to bottom.
-- Inspect every visible day column.
-- Do not invent classes.
-- Carefully distinguish module codes beginning with CS.
-- Preserve lecturer names accurately.
-- Preserve room names accurately.
-- Preserve class types accurately.
-
-For module names:
-
-- First read the module code from the timetable.
-- Then use web search to find the official module name.
-- Search specifically for the University of Limerick module.
-- Prefer official University of Limerick websites and documentation.
-- Search using the exact module code.
-- Examples:
-    University of Limerick CS4297
-    UL CS4297 module
-    site:ul.ie CS4297
-- The module code must match exactly.
-- Never use the title of a similar module with a different code.
-- Never guess a module name.
-- If the official module name cannot be reliably verified,
-  return an empty string for module_name.
-
-For the teaching-week image:
-
-- Return every visible teaching-week row.
-- Return the teaching week number.
-- Return the commencing day as an integer.
-- Return the commencing month as an integer.
-- Do not generate a year.
-"""
-
-
-def build_user_prompt(
-    attempt: int,
-    previous_issues: list[str] | None,
-) -> str:
-    retry = ""
-
-    if previous_issues:
-        retry += "\nPrevious validation problems:\n"
-
-        for issue in previous_issues:
-            retry += f"- {issue}\n"
-
-    return f"""
-Read both attached screenshots carefully.
-
-For EVERY genuine scheduled class return:
-
-- day
-- start_time in HH:MM 24-hour format
-- end_time in HH:MM 24-hour format
-- module_code
-- module_name
-- class_type
-- lecturer
-- room
-- weeks expanded into a list of integers
-
-Examples:
-
-Wks:1-12
-
-becomes:
-
-[1,2,3,4,5,6,7,8,9,10,11,12]
-
-Wks:4-12
-
-becomes:
-
-[4,5,6,7,8,9,10,11,12]
-
-
-MODULE NAMES
-
-After identifying the module codes from the screenshot:
-
-1. Use web search to look up each module code.
-2. Find its official University of Limerick module name.
-3. Prefer official University of Limerick sources.
-4. Match the exact module code.
-5. Never guess.
-6. If the module name cannot be verified, use "".
-
-
-TEACHING WEEKS
-
-For every teaching-week row return:
-
-- week
-- day
-- month
-
-Examples:
-
-07/09
-
-becomes:
-
-day = 7
-month = 9
-
-05/10
-
-becomes:
-
-day = 5
-month = 10
-
-
-IMPORTANT
-
-- There is no fixed number of classes.
-- Return every real visible class.
-- Do not invent classes.
-- Do not merge neighbouring classes.
-- Do not duplicate classes.
-- Use the times printed inside each timetable block.
-- Inspect the entire timetable.
-- Keep lecturer and room information attached to the correct class.
-- Search online only for module names.
-- Timetable details must come from the screenshots.
-
-Extraction attempt: {attempt}
-
-{retry}
-"""
 
 
 def validate_extraction(
@@ -520,122 +386,592 @@ def validate_extraction(
     return issues
 
 
-def extract_with_openai(
-    images: list[Path],
-) -> TimetableExtraction:
-    api_key = os.getenv(
-        "OPENAI_API_KEY"
-    )
+def _ollama_json(
+    *,
+    image: Path,
+    prompt: str,
+    schema_model: type[BaseModel],
+) -> BaseModel:
+    """Run one local vision request and validate its structured JSON."""
+    schema = schema_model.model_json_schema()
+    last_error: Exception | None = None
 
-    if not api_key:
-        raise RuntimeError(
-            "OPENAI_API_KEY could not be loaded from .env."
-        )
-
-    client = OpenAI(
-        api_key=api_key
-    )
-
-    previous_issues: list[str] | None = None
-
-    for attempt in range(
-        1,
-        MAX_EXTRACTION_ATTEMPTS + 1,
-    ):
+    for attempt in range(1, MAX_EXTRACTION_ATTEMPTS + 1):
         print(
-            f"\nReading timetable and searching module names "
-            f"(attempt {attempt}/{MAX_EXTRACTION_ATTEMPTS})..."
+            f"  {image.name}: attempt "
+            f"{attempt}/{MAX_EXTRACTION_ATTEMPTS}..."
         )
 
-        content = [
-            {
-                "type": "input_text",
-                "text": build_user_prompt(
-                    attempt,
-                    previous_issues,
-                ),
-            }
-        ]
-
-        for image in images:
-            content.append(
-                {
-                    "type": "input_image",
-                    "image_url": image_as_data_url(
-                        image
-                    ),
-                    "detail": "original",
-                }
+        retry_note = ""
+        if last_error is not None:
+            retry_note = (
+                "\
+\
+Your previous response was invalid or incomplete JSON. "
+                "Return the COMPLETE JSON object from beginning to end. "
+                "Do not add markdown or commentary."
             )
 
-        response = client.responses.parse(
-            model=OPENAI_MODEL,
-            tools=[
-                {
-                    "type": "web_search",
-                    "search_context_size": "medium",
-                }
-            ],
-            input=[
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
+        response = ollama.chat(
+            model=OLLAMA_MODEL,
+            messages=[
                 {
                     "role": "user",
-                    "content": content,
-                },
+                    "content": prompt + retry_note,
+                    "images": [str(image.resolve())],
+                }
             ],
-            text_format=TimetableExtraction,
+            format=schema,
+            options={
+                "temperature": 0,
+                "num_ctx": 16384,
+                "num_predict": 8192,
+            },
         )
 
-        result = response.output_parsed
+        raw = response["message"]["content"]
 
-        if result is None:
-            raise RuntimeError(
-                "OpenAI returned no parsed timetable data."
-            )
-
-        print(
-            f"Found {len(result.classes)} classes."
-        )
-
-        unique_modules = sorted(
-            {
-                cls.module_code.strip().upper()
-                for cls in result.classes
-            }
-        )
-
-        print(
-            f"Found {len(unique_modules)} unique modules."
-        )
-
-        previous_issues = validate_extraction(
-            result
-        )
-
-        if not previous_issues:
-            return result
-
-        print(
-            "\nValidation found:"
-        )
-
-        for issue in previous_issues:
-            print(
-                f"  - {issue}"
-            )
-
-        if attempt < MAX_EXTRACTION_ATTEMPTS:
-            print(
-                "\nRe-reading screenshots..."
-            )
+        try:
+            return schema_model.model_validate_json(raw)
+        except (ValidationError, ValueError) as exc:
+            last_error = exc
+            print(f"    Invalid/incomplete JSON; retrying...")
 
     raise RuntimeError(
-        "Timetable could not be validated "
-        f"after {MAX_EXTRACTION_ATTEMPTS} attempts."
+        f"{image.name} could not be read as valid structured JSON "
+        f"after {MAX_EXTRACTION_ATTEMPTS} attempts.\
+"
+        f"Last error: {last_error}"
     )
+
+
+
+
+def _group_consecutive(values: np.ndarray) -> list[tuple[int, int]]:
+    if len(values) == 0:
+        return []
+
+    groups: list[tuple[int, int]] = []
+    start = previous = int(values[0])
+
+    for raw in values[1:]:
+        value = int(raw)
+        if value > previous + 1:
+            groups.append((start, previous))
+            start = value
+        previous = value
+
+    groups.append((start, previous))
+    return groups
+
+
+def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
+    """
+    Detect the timetable grid using long vertical lines.
+
+    Returns:
+      - x positions of the day-column boundaries
+      - y coordinate immediately below the dark day-header band
+      - binary image with grid lines removed
+    """
+    height, width = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Dark text/grid becomes white in the working mask.
+    _, binary = cv2.threshold(
+        gray,
+        225,
+        255,
+        cv2.THRESH_BINARY_INV,
+    )
+
+    vertical_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (1, max(30, height // 12)),
+    )
+    vertical_lines = cv2.morphologyEx(
+        binary,
+        cv2.MORPH_OPEN,
+        vertical_kernel,
+    )
+
+    vertical_projection = (vertical_lines > 0).sum(axis=0)
+    x_candidates = np.where(vertical_projection > height * 0.55)[0]
+    x_groups = _group_consecutive(x_candidates)
+
+    boundaries = [
+        int(round((left + right) / 2))
+        for left, right in x_groups
+    ]
+
+    # Remove near-duplicates and retain only plausible full-height boundaries.
+    clean_boundaries: list[int] = []
+    for x in boundaries:
+        if not clean_boundaries or x - clean_boundaries[-1] >= max(20, width // 50):
+            clean_boundaries.append(x)
+
+    if len(clean_boundaries) < 6:
+        raise RuntimeError(
+            "OpenCV could not detect enough timetable day columns. "
+            f"Detected boundaries: {clean_boundaries}"
+        )
+
+    # The dark green header is a wide dark band near the top.
+    dark_fraction = (binary > 0).mean(axis=1)
+    header_rows = np.where(dark_fraction > 0.60)[0]
+    header_groups = _group_consecutive(header_rows)
+
+    header_bottom = max(25, round(height * 0.04))
+    for top, bottom in header_groups:
+        if top < height * 0.15 and (bottom - top + 1) >= 8:
+            header_bottom = bottom + 1
+            break
+
+    horizontal_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (max(30, width // 18), 1),
+    )
+    horizontal_lines = cv2.morphologyEx(
+        binary,
+        cv2.MORPH_OPEN,
+        horizontal_kernel,
+    )
+
+    grid = cv2.bitwise_or(vertical_lines, horizontal_lines)
+    text_only = cv2.subtract(binary, grid)
+
+    return clean_boundaries, header_bottom, text_only
+
+
+def detect_class_blocks(
+    timetable_image: Path,
+) -> tuple[np.ndarray, list[DetectedBlock]]:
+    """
+    Detect text groups inside each day column.
+
+    Day is determined ONLY from geometry. Ollama never chooses the day.
+    """
+    image = cv2.imread(str(timetable_image))
+    if image is None:
+        raise RuntimeError(f"Could not open timetable image: {timetable_image}")
+
+    height, width = image.shape[:2]
+    boundaries, body_top, text_only = detect_day_columns(image)
+
+    # UL screenshots normally contain Monday-Saturday. We only need intervals
+    # between consecutive full-height vertical boundaries.
+    interval_count = min(len(boundaries) - 1, 7)
+    if interval_count < 5:
+        raise RuntimeError(
+            f"Expected at least Monday-Friday columns; found {interval_count}."
+        )
+
+    blocks: list[DetectedBlock] = []
+
+    kernel_x = max(7, round(width * 0.010))
+    kernel_y = max(9, round(height * 0.015))
+    group_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (kernel_x, kernel_y),
+    )
+
+    for day_index in range(interval_count):
+        left = boundaries[day_index]
+        right = boundaries[day_index + 1]
+
+        if right - left < 40:
+            continue
+
+        # Stay a couple of pixels away from the grid borders.
+        inner_left = left + 3
+        inner_right = right - 3
+
+        column_mask = text_only[
+            body_top:height,
+            inner_left:inner_right,
+        ]
+
+        grouped = cv2.dilate(
+            column_mask,
+            group_kernel,
+            iterations=1,
+        )
+
+        count, _, stats, _ = cv2.connectedComponentsWithStats(
+            grouped,
+            connectivity=8,
+        )
+
+        column_components: list[tuple[int, int, int, int, int]] = []
+
+        min_area = max(180, round(width * height * 0.00022))
+        min_width = max(18, round(width * 0.020))
+        min_height = max(18, round(height * 0.025))
+
+        for label in range(1, count):
+            x, y, w, h, area = [int(v) for v in stats[label]]
+
+            if area < min_area:
+                continue
+            if w < min_width or h < min_height:
+                continue
+
+            # Class blocks in this timetable contain several text rows.
+            # Tiny isolated artifacts are ignored.
+            column_components.append((x, y, w, h, area))
+
+        column_components.sort(key=lambda item: item[1])
+
+        for x, y, w, h, _ in column_components:
+            pad_x = max(7, round(width * 0.008))
+            pad_y = max(6, round(height * 0.007))
+
+            x0 = max(left + 1, inner_left + x - pad_x)
+            x1 = min(right - 1, inner_left + x + w + pad_x)
+            y0 = max(body_top, body_top + y - pad_y)
+            y1 = min(height - 1, body_top + y + h + pad_y)
+
+            blocks.append(
+                DetectedBlock(
+                    day=DAYS[day_index],
+                    x0=x0,
+                    y0=y0,
+                    x1=x1,
+                    y1=y1,
+                )
+            )
+
+    blocks.sort(
+        key=lambda block: (
+            DAY_INDEX.get(block.day, 99),
+            block.y0,
+            block.x0,
+        )
+    )
+
+    return image, blocks
+
+
+def save_layout_debug(
+    image: np.ndarray,
+    blocks: list[DetectedBlock],
+) -> None:
+    if not SAVE_LAYOUT_DEBUG:
+        return
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    debug = image.copy()
+
+    for index, block in enumerate(blocks, start=1):
+        cv2.rectangle(
+            debug,
+            (block.x0, block.y0),
+            (block.x1, block.y1),
+            (0, 0, 255),
+            2,
+        )
+        cv2.putText(
+            debug,
+            f"{index} {block.day}",
+            (block.x0 + 2, max(18, block.y0 - 4)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (0, 0, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+    cv2.imwrite(str(LAYOUT_DEBUG_FILE), debug)
+
+
+def make_block_crop(
+    image: np.ndarray,
+    block: DetectedBlock,
+    output_path: Path,
+) -> None:
+    crop = image[
+        block.y0:block.y1,
+        block.x0:block.x1,
+    ]
+
+    if crop.size == 0:
+        raise RuntimeError(f"Empty crop detected for {block.day}.")
+
+    # Upscale isolated text. The crop contains only one class, so this no
+    # longer damages timetable layout context because layout is already known.
+    scale = 3
+    enlarged = cv2.resize(
+        crop,
+        None,
+        fx=scale,
+        fy=scale,
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+    cv2.imwrite(str(output_path), enlarged)
+
+
+
+def parse_week_text(
+    week_text: str,
+    valid_week_numbers: set[int] | None = None,
+) -> list[int]:
+    """
+    Convert literal timetable week text into exact week numbers.
+
+    Supported examples:
+      Wks:1-12
+      Wks:2-11
+      Wks:6
+      Wks:1,3,5
+      Wks:1-5,7-9
+      Wks: 1–4, 6, 8-10
+
+    No default end week is ever assumed.
+    """
+    original = week_text.strip()
+
+    text = original.casefold()
+    text = (
+        text.replace("weeks", "")
+        .replace("week", "")
+        .replace("wks", "")
+        .replace("wk", "")
+        .replace(":", "")
+        .replace(";", ",")
+        .replace("–", "-")
+        .replace("—", "-")
+        .replace("−", "-")
+    )
+
+    # Keep only digits, commas, hyphens and whitespace.
+    text = re.sub(r"[^0-9,\-\s]", "", text)
+    text = re.sub(r"\s*-\s*", "-", text)
+    text = re.sub(r"\s+", ",", text)
+    text = re.sub(r",+", ",", text).strip(",")
+
+    if not text:
+        raise ValueError(
+            f"Could not parse teaching weeks from {original!r}."
+        )
+
+    weeks: list[int] = []
+
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+
+        if "-" in part:
+            pieces = [piece for piece in part.split("-") if piece]
+            if len(pieces) != 2:
+                raise ValueError(
+                    f"Ambiguous week range {part!r} in {original!r}."
+                )
+
+            start = int(pieces[0])
+            end = int(pieces[1])
+
+            if start > end:
+                raise ValueError(
+                    f"Reversed week range {part!r} in {original!r}."
+                )
+
+            weeks.extend(range(start, end + 1))
+        else:
+            weeks.append(int(part))
+
+    weeks = sorted(set(weeks))
+
+    if not weeks:
+        raise ValueError(
+            f"No teaching weeks found in {original!r}."
+        )
+
+    if min(weeks) < 1 or max(weeks) > 60:
+        raise ValueError(
+            f"Invalid teaching week in {original!r}: {weeks}"
+        )
+
+    if valid_week_numbers is not None:
+        unknown = sorted(set(weeks) - valid_week_numbers)
+        if unknown:
+            raise ValueError(
+                f"Week text {original!r} contains weeks not present "
+                f"in the teaching-weeks screenshot: {unknown}"
+            )
+
+    return weeks
+
+def extract_with_ollama(
+    images: list[Path],
+) -> TimetableExtraction:
+    """
+    Hybrid extraction:
+
+    - OpenCV determines day columns and individual class regions.
+    - Ollama reads ONE isolated class crop at a time.
+    - Ollama never chooses the day or reasons about timetable layout.
+    """
+    week_candidates = [p for p in images if "week" in p.stem.casefold()]
+    timetable_candidates = [p for p in images if "timetable" in p.stem.casefold()]
+
+    if len(week_candidates) == 1 and len(timetable_candidates) == 1:
+        weeks_image = week_candidates[0]
+        timetable_image = timetable_candidates[0]
+    else:
+        raise RuntimeError(
+            "Name the screenshots timetable.png and weeks.png "
+            "(jpg/jpeg/webp also work)."
+        )
+
+    print(f"\nReading teaching weeks locally with {OLLAMA_MODEL}...")
+
+    weeks_prompt = r"""
+You are reading a University of Limerick teaching-week screenshot.
+
+Extract EVERY visible teaching-week row.
+For each row return:
+- week: integer teaching week number
+- day: integer day from the commencing date
+- month: integer month from the commencing date
+
+Example: 07/09 means day=7, month=9.
+Do not invent a year.
+Do not skip rows.
+Return only JSON matching the supplied schema.
+"""
+
+    weeks_result = _ollama_json(
+        image=weeks_image,
+        prompt=weeks_prompt,
+        schema_model=TeachingWeeksExtraction,
+    )
+
+    print(f"Found {len(weeks_result.teaching_weeks)} teaching weeks.")
+
+    valid_week_numbers = {
+        item.week
+        for item in weeks_result.teaching_weeks
+    }
+
+    print("\nDetecting timetable layout with OpenCV...")
+    source_image, blocks = detect_class_blocks(timetable_image)
+
+    if not blocks:
+        raise RuntimeError("OpenCV did not detect any class blocks.")
+
+    save_layout_debug(source_image, blocks)
+
+    print(f"Detected {len(blocks)} class blocks geometrically.")
+    print("Day assignments come from column position, not the LLM.")
+
+    block_prompt = r"""
+This image crop contains ONE University of Limerick timetable class block.
+
+Read ONLY the text visible in this one block.
+
+Return:
+- start_time: the printed start time in HH:MM 24-hour format
+- end_time: the printed end time in HH:MM 24-hour format
+- module_code: exact module code, e.g. CS4297
+- class_type: the COMPLETE visible class type
+- lecturer: lecturer/professor name
+- room: exact room text
+- week_text: copy the COMPLETE visible week text exactly as written
+
+CLASS TYPE IS IMPORTANT:
+- Preserve group suffixes.
+- "LAB - 2A" must remain "LAB - 2A".
+- "LAB - 2E" must remain "LAB - 2E".
+- "TUT - 3D" must remain "TUT - 3D".
+- Do not shorten them to LAB or TUT.
+
+TIME IS IMPORTANT:
+- Copy the time printed in THIS crop.
+- Do not invent a different time.
+- Overlapping classes elsewhere are irrelevant because this crop contains
+  only one class.
+
+WEEK TEXT IS IMPORTANT:
+- Copy the visible week text literally.
+- Do NOT expand a range yourself.
+- Do NOT assume it ends at week 12.
+- "Wks:2-11" must be returned as "Wks:2-11".
+- "Wks:6" must be returned as "Wks:6".
+- "Wks:1-5,7-9" must preserve both ranges.
+- Never replace a visible end week with 12.
+
+Python will interpret the week text after you return it.
+
+Return only JSON matching the supplied schema.
+"""
+
+    classes: list[ClassEntry] = []
+
+    with tempfile.TemporaryDirectory(prefix="ul_calendar_blocks_") as temp_dir:
+        temp_path = Path(temp_dir)
+
+        for index, block in enumerate(blocks, start=1):
+            crop_path = temp_path / f"class_{index:02d}_{block.day}.png"
+            make_block_crop(
+                source_image,
+                block,
+                crop_path,
+            )
+
+            print(
+                f"Reading class {index}/{len(blocks)} "
+                f"({block.day}) with {OLLAMA_MODEL}..."
+            )
+
+            block_data = _ollama_json(
+                image=crop_path,
+                prompt=block_prompt,
+                schema_model=ClassBlockRead,
+            )
+
+            parsed_weeks = parse_week_text(
+                block_data.week_text,
+                valid_week_numbers,
+            )
+
+            print(
+                f"  Weeks: {block_data.week_text!r} "
+                f"-> {compress_weeks(parsed_weeks)}"
+            )
+
+            classes.append(
+                ClassEntry(
+                    day=block.day,
+                    start_time=block_data.start_time,
+                    end_time=block_data.end_time,
+                    module_code=block_data.module_code.strip().upper(),
+                    module_name="",
+                    class_type=block_data.class_type.strip(),
+                    lecturer=block_data.lecturer.strip(),
+                    room=block_data.room.strip(),
+                    weeks=parsed_weeks,
+                )
+            )
+
+    result = TimetableExtraction(
+        teaching_weeks=weeks_result.teaching_weeks,
+        classes=classes,
+    )
+
+    print(f"Found {len(result.classes)} complete classes.")
+
+    issues = validate_extraction(result)
+    if issues:
+        print("\nValidation found:")
+        for issue in issues:
+            print(f"  - {issue}")
+        raise RuntimeError(
+            "Hybrid extraction produced data, but validation failed."
+        )
+
+    return result
 
 
 def compress_weeks(
@@ -683,20 +1019,14 @@ def compress_weeks(
 def module_text(
     cls: ClassEntry,
 ) -> str:
-    code = cls.module_code.strip().upper()
-    name = cls.module_name.strip()
-
-    if name:
-        return f"{code} - {name}"
-
-    return code
+    return cls.module_code.strip().upper()
 
 
 def event_title(
     cls: ClassEntry,
 ) -> str:
     return (
-        f"{module_text(cls)}"
+        f"{cls.module_code.strip().upper()}"
         f" - {cls.class_type.strip()}"
         f" - {cls.lecturer.strip()}"
     )
@@ -930,7 +1260,7 @@ def make_event(
     module_name = (
         cls.module_name.strip()
         if cls.module_name.strip()
-        else "Could not verify online"
+        else "Not set (can be added in the UI)"
     )
 
     description = (
@@ -1060,98 +1390,66 @@ def create_ics(
 
 
 def main() -> None:
-    print(
-        "=" * 70
-    )
+    print("=" * 70)
+    print(f"UL Timetable -> Local Ollama ({OLLAMA_MODEL}) -> classes.ics")
+    print("=" * 70)
 
-    print(
-        "UL Timetable -> GPT Vision + Web Search -> classes.ics"
-    )
-
-    print(
-        "=" * 70
-    )
-
-    if not ENV_FILE.exists():
+    try:
+        installed = ollama.list()
+        model_names = {
+            getattr(model, "model", "")
+            for model in installed.models
+        }
+        if not any(
+            name == OLLAMA_MODEL or name.startswith(OLLAMA_MODEL + ":")
+            for name in model_names
+        ):
+            raise RuntimeError(
+                f"{OLLAMA_MODEL} is not installed.\n"
+                f"Run: ollama pull {OLLAMA_MODEL}"
+            )
+    except RuntimeError:
+        raise
+    except Exception as exc:
         raise RuntimeError(
-            f".env file was not found:\n{ENV_FILE}"
-        )
+            "Could not connect to Ollama. Make sure Ollama is installed "
+            "and running."
+        ) from exc
 
-    if not os.getenv(
-        "OPENAI_API_KEY"
-    ):
-        raise RuntimeError(
-            "OPENAI_API_KEY could not be loaded from .env."
-        )
-
-    print(
-        "\nAPI key loaded successfully."
-    )
+    print(f"\nLocal model ready: {OLLAMA_MODEL}")
 
     images = find_input_images()
 
-    print(
-        "\nInput images:"
-    )
-
+    print("\nInput images:")
     for image in images:
-        print(
-            f"  {image.name}"
-        )
+        print(f"  {image.name}")
 
-    data = extract_with_openai(
-        images
-    )
+    data = extract_with_ollama(images)
 
-    print_preview(
-        data
-    )
+    print_preview(data)
 
-    issues = validate_extraction(
-        data
-    )
+    issues = validate_extraction(data)
 
     if issues:
-        print(
-            "\nCalendar was NOT created because "
-            "validation failed:"
-        )
-
+        print("\nCalendar was NOT created because validation failed:")
         for issue in issues:
-            print(
-                f"  - {issue}"
-            )
-
+            print(f"  - {issue}")
         sys.exit(1)
 
     answer = input(
         "\nDoes this preview look correct? "
         "Type YES to create classes.ics: "
-    ).strip()
+    ).strip().casefold()
 
-    if answer != "YES":
-        print(
-            "\nCancelled."
-        )
-
+    if answer not in {"yes", "y"}:
+        print("\nCancelled.")
         return
 
-    create_ics(
-        data
-    )
+    create_ics(data)
 
-    print(
-        "\nDone."
-    )
-
-    print(
-        f"\nCreated:\n  {OUTPUT_FILE}"
-    )
-
-    print(
-        f"\nDetected and exported "
-        f"{len(data.classes)} classes."
-    )
+    print("\nDone.")
+    print(f"\nCreated:\n  {OUTPUT_FILE}")
+    print(f"\nDetected and exported {len(data.classes)} classes.")
 
 
 if __name__ == "__main__":
