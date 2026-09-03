@@ -56,6 +56,7 @@ from __future__ import annotations
 import re
 import time as time_module
 import os
+import hashlib
 import shutil
 import threading
 import queue
@@ -103,6 +104,7 @@ CLASS_NUM_PREDICT = 384
 WEEKS_NUM_CTX = 6144
 WEEKS_NUM_PREDICT = 768
 OLLAMA_KEEP_ALIVE = "15m"
+USE_INFERENCE_CACHE = True
 
 
 DAYS = [
@@ -429,6 +431,39 @@ def _ollama_json(
         num_ctx = CLASS_NUM_CTX
         num_predict = CLASS_NUM_PREDICT
 
+    cache_file: Path | None = None
+    if USE_INFERENCE_CACHE:
+        image_bytes = image.read_bytes() if isinstance(image, Path) else image
+        cache_key = hashlib.sha256()
+        for value in (
+            OLLAMA_MODEL,
+            schema_model.__name__,
+            prompt,
+            repr(schema),
+            str(num_ctx),
+            str(num_predict),
+        ):
+            cache_key.update(value.encode("utf-8"))
+            cache_key.update(b"\0")
+        cache_key.update(image_bytes)
+
+        cache_dir = (
+            Path(tempfile.gettempdir())
+            / "ULCalendarCreator"
+            / "inference-cache"
+        )
+        cache_file = cache_dir / f"{cache_key.hexdigest()}.json"
+
+        try:
+            cached = schema_model.model_validate_json(
+                cache_file.read_text(encoding="utf-8")
+            )
+        except (OSError, ValidationError, ValueError):
+            pass
+        else:
+            print(f"  {display_name}: using cached result.")
+            return cached
+
     for attempt in range(1, MAX_EXTRACTION_ATTEMPTS + 1):
         print(
             f"  {display_name}: attempt "
@@ -464,7 +499,22 @@ def _ollama_json(
         raw = response["message"]["content"]
 
         try:
-            return schema_model.model_validate_json(raw)
+            validated = schema_model.model_validate_json(raw)
+
+            if cache_file is not None:
+                try:
+                    cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    temporary_cache_file = cache_file.with_suffix(".tmp")
+                    temporary_cache_file.write_text(
+                        validated.model_dump_json(),
+                        encoding="utf-8",
+                    )
+                    temporary_cache_file.replace(cache_file)
+                except OSError:
+                    # Caching is optional and must not break extraction.
+                    pass
+
+            return validated
         except (ValidationError, ValueError) as exc:
             last_error = exc
             print("    Invalid/incomplete JSON; retrying...")
