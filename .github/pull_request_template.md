@@ -2,10 +2,6 @@
 
 <!-- Briefly explain what this pull request changes and why. -->
 
-## Changes
-
-- 
-
 ## Testing
 
 <!-- Describe how you tested these changes. -->

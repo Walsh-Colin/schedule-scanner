@@ -727,6 +727,20 @@ def make_block_crop_bytes(
 
 
 
+if __package__:
+    from .services.layout_detection import (
+        detect_class_blocks,
+        make_block_crop_bytes,
+        save_layout_debug,
+    )
+else:
+    from services.layout_detection import (
+        detect_class_blocks,
+        make_block_crop_bytes,
+        save_layout_debug,
+    )
+
+
 def extract_with_ollama(
     images: list[Path] | None = None,
     *,
