@@ -79,6 +79,8 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from inference_cache import INFERENCE_CACHE_DIR, clear_inference_cache
+
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -105,11 +107,6 @@ WEEKS_NUM_CTX = 6144
 WEEKS_NUM_PREDICT = 768
 OLLAMA_KEEP_ALIVE = "15m"
 USE_INFERENCE_CACHE = True
-INFERENCE_CACHE_DIR = (
-    Path(tempfile.gettempdir())
-    / "ULCalendarCreator"
-    / "inference-cache"
-)
 
 
 DAYS = [
@@ -1841,9 +1838,7 @@ class ULCalendarApp(ctk.CTk):
             return
 
         try:
-            shutil.rmtree(INFERENCE_CACHE_DIR, ignore_errors=False)
-        except FileNotFoundError:
-            pass
+            clear_inference_cache()
         except OSError as exc:
             messagebox.showerror(
                 APP_TITLE,
