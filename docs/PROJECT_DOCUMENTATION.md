@@ -71,6 +71,8 @@ The command-line output is `output/classes.ics`. The desktop UI builds a tempora
 
 The CustomTkinter interface supports screenshot selection, background extraction, progress and timing, cached-result reuse, editable class review, row deletion, validation, and calendar download. A queue returns worker-thread results to the Tk event loop so the interface remains responsive.
 
+The local vision model is preloaded on a background thread when the application starts, allowing model loading to overlap with screenshot selection and reducing cold-start extraction latency.
+
 The artwork in `schedule_scanner/images/CalGen.png` is used in the main header and as the cross-platform window icon. Its `CalGen.ico` variant supplies the Windows title-bar and taskbar icon.
 
 ## Configuration

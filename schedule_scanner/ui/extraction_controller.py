@@ -7,9 +7,17 @@ import time
 import ollama
 
 try:
-    from ..services.timetable_extraction import extract_with_ollama
+    from ..services.timetable_extraction import (
+        CLASS_NUM_CTX,
+        OLLAMA_KEEP_ALIVE,
+        extract_with_ollama,
+    )
 except ImportError:
-    from services.timetable_extraction import extract_with_ollama
+    from services.timetable_extraction import (
+        CLASS_NUM_CTX,
+        OLLAMA_KEEP_ALIVE,
+        extract_with_ollama,
+    )
 
 
 class TextRedirector:
@@ -31,6 +39,8 @@ class ExtractionController:
         self._model_checked = False
         self._signature: tuple | None = None
         self._timer_started_at: float | None = None
+        self._warmup_started = False
+        self._warmup_complete = threading.Event()
 
     @property
     def running(self) -> bool:
@@ -79,6 +89,15 @@ class ExtractionController:
             daemon=True,
         ).start()
 
+    def preload(self) -> None:
+        if self._warmup_started:
+            return
+        self._warmup_started = True
+        threading.Thread(
+            target=self._preload_worker,
+            daemon=True,
+        ).start()
+
     def drain_messages(self) -> list[tuple[str, object]]:
         messages: list[tuple[str, object]] = []
         while True:
@@ -94,23 +113,9 @@ class ExtractionController:
         try:
             sys.stdout = redirector
             sys.stderr = redirector
-            if not self._model_checked:
-                installed = ollama.list()
-                model_names = {
-                    getattr(item, "model", "")
-                    for item in installed.models
-                }
-                if not any(
-                    name == self.model
-                    or name.startswith(self.model + ":")
-                    for name in model_names
-                ):
-                    raise RuntimeError(
-                        "The local timetable reader is not installed yet.\n\n"
-                        "Run this once in PowerShell:\n"
-                        f"ollama pull {self.model}"
-                    )
-                self._model_checked = True
+            if self._warmup_started:
+                self._warmup_complete.wait()
+            self._ensure_model_available()
 
             result = extract_with_ollama(
                 timetable_image=timetable,
@@ -123,3 +128,37 @@ class ExtractionController:
         finally:
             sys.stdout = old_stdout
             sys.stderr = old_stderr
+
+    def _preload_worker(self) -> None:
+        try:
+            self._ensure_model_available()
+            ollama.generate(
+                model=self.model,
+                prompt="",
+                keep_alive=OLLAMA_KEEP_ALIVE,
+                options={"num_ctx": CLASS_NUM_CTX},
+            )
+        except Exception as exc:
+            self.messages.put(("engine_log", f"Model warm-up failed: {exc}"))
+        finally:
+            self._warmup_complete.set()
+
+    def _ensure_model_available(self) -> None:
+        if self._model_checked:
+            return
+        installed = ollama.list()
+        model_names = {
+            getattr(item, "model", "")
+            for item in installed.models
+        }
+        if not any(
+            name == self.model
+            or name.startswith(self.model + ":")
+            for name in model_names
+        ):
+            raise RuntimeError(
+                "The local timetable reader is not installed yet.\n\n"
+                "Run this once in PowerShell:\n"
+                f"ollama pull {self.model}"
+            )
+        self._model_checked = True
