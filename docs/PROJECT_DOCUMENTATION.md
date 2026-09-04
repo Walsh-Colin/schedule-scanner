@@ -18,25 +18,25 @@ ollama pull qwen2.5vl:3b
 ## Running the application
 
 ```powershell
-python -m ul_calendar_creator.ul_calendar_creator
+python -m schedule_scanner.schedule_scanner
 ```
 
 Select both screenshots, create the timetable, review the detected classes, and download the calendar.
 
 ## Package structure
 
-- `ul_calendar_creator/ul_calendar_creator.py`: application launch entry point
-- `ul_calendar_creator/services/calendar_export.py`: iCalendar event and file generation
-- `ul_calendar_creator/models/timetable.py`: validated Pydantic models
-- `ul_calendar_creator/services/inference_cache.py`: cached inference storage
-- `ul_calendar_creator/services/layout_detection.py`: timetable geometry and image crops
-- `ul_calendar_creator/services/timetable_extraction.py`: Ollama inference, caching coordination, and extraction validation
-- `ul_calendar_creator/services/teaching_weeks.py`: teaching-week parsing and formatting
-- `ul_calendar_creator/ui/editable_class_row.py`: editable timetable review-row component
-- `ul_calendar_creator/ui/extraction_controller.py`: extraction worker, model checks, queue, file signatures, and timer state
-- `ul_calendar_creator/ui/review_view.py`: timetable review layout, row editing, and save validation
-- `ul_calendar_creator/ui/theme.py`: visual theme, application identity, asset paths, and shared UI configuration
-- `ul_calendar_creator/ui/app.py`: desktop application window and UI workflows
+- `schedule_scanner/schedule_scanner.py`: application launch entry point
+- `schedule_scanner/services/calendar_export.py`: iCalendar event and file generation
+- `schedule_scanner/models/timetable.py`: validated Pydantic models
+- `schedule_scanner/services/inference_cache.py`: cached inference storage
+- `schedule_scanner/services/layout_detection.py`: timetable geometry and image crops
+- `schedule_scanner/services/timetable_extraction.py`: Ollama inference, caching coordination, and extraction validation
+- `schedule_scanner/services/teaching_weeks.py`: teaching-week parsing and formatting
+- `schedule_scanner/ui/editable_class_row.py`: editable timetable review-row component
+- `schedule_scanner/ui/extraction_controller.py`: extraction worker, model checks, queue, file signatures, and timer state
+- `schedule_scanner/ui/review_view.py`: timetable review layout, row editing, and save validation
+- `schedule_scanner/ui/theme.py`: visual theme, application identity, asset paths, and shared UI configuration
+- `schedule_scanner/ui/app.py`: desktop application window and UI workflows
 - `timetable_to_calender.py`: older standalone implementation
 
 ## Extraction pipeline
@@ -71,7 +71,7 @@ The command-line output is `output/classes.ics`. The desktop UI builds a tempora
 
 The CustomTkinter interface supports screenshot selection, background extraction, progress and timing, cached-result reuse, editable class review, row deletion, validation, and calendar download. A queue returns worker-thread results to the Tk event loop so the interface remains responsive.
 
-The artwork in `ul_calendar_creator/images/CalGen.png` is used in the main header and as the cross-platform window icon. Its `CalGen.ico` variant supplies the Windows title-bar and taskbar icon.
+The artwork in `schedule_scanner/images/CalGen.png` is used in the main header and as the cross-platform window icon. Its `CalGen.ico` variant supplies the Windows title-bar and taskbar icon.
 
 ## Configuration
 

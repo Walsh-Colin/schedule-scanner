@@ -1,7 +1,7 @@
 # Schedule Scanner
 
 <p align="center">
-  <img src="ul_calendar_creator/images/CalGen.png" alt="Schedule Scanner icon" width="240">
+  <img src="schedule_scanner/images/CalGen.png" alt="Schedule Scanner icon" width="240">
 </p>
 
 Schedule Scanner is a desktop application that converts timetable screenshots into an importable iCalendar (`.ics`) file.
