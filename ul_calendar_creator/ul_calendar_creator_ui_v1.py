@@ -48,7 +48,7 @@ Local model:
 
 Run:
 
-    python timetable_to_calender.py
+    python -m ul_calendar_creator.ul_calendar_creator_ui_v1
 """
 
 from __future__ import annotations
@@ -79,10 +79,20 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from inference_cache import INFERENCE_CACHE_DIR, clear_inference_cache
+if __package__:
+    from .inference_cache import (
+        INFERENCE_CACHE_DIR,
+        clear_inference_cache,
+    )
+else:
+    # Support launching this file directly from an IDE or with Python.
+    from inference_cache import (
+        INFERENCE_CACHE_DIR,
+        clear_inference_cache,
+    )
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 INPUT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
