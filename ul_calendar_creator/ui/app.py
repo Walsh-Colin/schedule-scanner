@@ -1,16 +1,12 @@
 import ctypes
 from datetime import datetime
 from pathlib import Path
-import queue
 import shutil
 import sys
 import tempfile
-import threading
-import time as time_module
 import webbrowser
 
 import customtkinter as ctk
-import ollama
 from PIL import Image
 from pydantic import ValidationError
 from tkinter import PhotoImage, filedialog, messagebox
@@ -19,20 +15,15 @@ try:
     from ..models import TimetableExtraction
     from ..services.calendar_export import create_ics
     from ..services.inference_cache import clear_inference_cache
-    from ..services.timetable_extraction import (
-        extract_with_ollama,
-        validate_extraction,
-    )
+    from ..services.timetable_extraction import validate_extraction
 except ImportError:
     from models import TimetableExtraction
     from services.calendar_export import create_ics
     from services.inference_cache import clear_inference_cache
-    from services.timetable_extraction import (
-        extract_with_ollama,
-        validate_extraction,
-    )
+    from services.timetable_extraction import validate_extraction
 
 from .editable_class_row import EditableClassRow
+from .extraction_controller import ExtractionController
 
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
@@ -64,16 +55,6 @@ DAYS = [
 DAY_INDEX = {day: index for index, day in enumerate(DAYS)}
 
 
-class TextRedirector:
-    def __init__(self, message_queue: queue.Queue):
-        self.message_queue = message_queue
-
-    def write(self, value: str) -> None:
-        if value and value.strip():
-            self.message_queue.put(("engine_log", value.strip()))
-
-    def flush(self) -> None:
-        pass
 
 
 class ULCalendarApp(ctk.CTk):
@@ -121,17 +102,8 @@ class ULCalendarApp(ctk.CTk):
 
         self.extraction: TimetableExtraction | None = None
         self.generated_ics: Path | None = None
-        self.ui_queue: queue.Queue = queue.Queue()
+        self.extraction_controller = ExtractionController(HIDDEN_MODEL)
         self.class_rows: list[EditableClassRow] = []
-
-
-        self._model_checked = False
-        self._extraction_signature: tuple | None = None
-
-
-
-        self._timer_started_at: float | None = None
-        self._timer_running = False
         self.timer_text = ctk.StringVar(value="Time: 0.0s")
 
         self._build_shell()
@@ -298,7 +270,7 @@ class ULCalendarApp(ctk.CTk):
             widget.destroy()
 
     def _clear_developer_cache(self) -> None:
-        if self._timer_running:
+        if self.extraction_controller.running:
             messagebox.showinfo(
                 APP_TITLE,
                 "Please wait for the current timetable extraction to finish.",
@@ -316,7 +288,7 @@ class ULCalendarApp(ctk.CTk):
 
         self.extraction = None
         self.generated_ics = None
-        self._extraction_signature = None
+        self.extraction_controller.reset()
         self.timer_text.set("Time: 0.0s")
         self.status_text.set(
             "Cache cleared. Create the timetable to run a fresh test."
@@ -793,9 +765,7 @@ class ULCalendarApp(ctk.CTk):
     def _reset_after_file_change(self) -> None:
         self.extraction = None
         self.generated_ics = None
-        self._extraction_signature = None
-        self._timer_running = False
-        self._timer_started_at = None
+        self.extraction_controller.reset()
         self.timer_text.set("Time: 0.0s")
 
         if self.timetable_path.get() and self.weeks_path.get():
@@ -812,44 +782,29 @@ class ULCalendarApp(ctk.CTk):
 
 
     def _start_timer(self) -> None:
-        self._timer_started_at = time_module.perf_counter()
-        self._timer_running = True
+        self.extraction_controller.start_timer()
         self.timer_text.set("Time: 0.0s")
         self.after(0, self._tick_timer)
 
     def _tick_timer(self) -> None:
-        if not self._timer_running or self._timer_started_at is None:
+        if not self.extraction_controller.running:
             return
 
-        elapsed = time_module.perf_counter() - self._timer_started_at
-        self.timer_text.set(f"Time: {elapsed:.1f}s")
+        self.timer_text.set(
+            f"Time: {self.extraction_controller.elapsed:.1f}s"
+        )
 
 
         self.after(100, self._tick_timer)
 
     def _stop_timer(self) -> float:
-        if self._timer_started_at is None:
-            self._timer_running = False
-            return 0.0
-
-        elapsed = time_module.perf_counter() - self._timer_started_at
-        self._timer_running = False
-        self._timer_started_at = None
+        elapsed = self.extraction_controller.stop_timer()
         self.timer_text.set(f"Time: {elapsed:.1f}s")
         return elapsed
 
 
 
 
-
-    @staticmethod
-    def _file_signature(path: Path) -> tuple[str, int, int]:
-        stat = path.stat()
-        return (
-            str(path.resolve()),
-            stat.st_size,
-            stat.st_mtime_ns,
-        )
 
     def _start_extraction(self) -> None:
         timetable = Path(self.timetable_path.get().strip())
@@ -869,14 +824,9 @@ class ULCalendarApp(ctk.CTk):
             )
             return
 
-        signature = (
-            self._file_signature(timetable),
-            self._file_signature(weeks),
-        )
-
         if (
             self.extraction is not None
-            and self._extraction_signature == signature
+            and self.extraction_controller.matches(timetable, weeks)
         ):
             self.timer_text.set("Time: 0.0s (cached)")
             self.status_text.set(
@@ -896,125 +846,53 @@ class ULCalendarApp(ctk.CTk):
         self.progress.configure(mode="indeterminate")
         self.progress.start()
         self.status_text.set("Reading timetable…")
-        self._start_timer()
+        self.extraction_controller.start(timetable, weeks)
+        self.after(0, self._tick_timer)
 
-        threading.Thread(
-            target=self._extraction_worker,
-            args=(timetable, weeks),
-            daemon=True,
-        ).start()
 
-    def _extraction_worker(
-        self,
-        timetable: Path,
-        weeks: Path,
-    ) -> None:
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        redirector = TextRedirector(self.ui_queue)
 
-        try:
-            sys.stdout = redirector
-            sys.stderr = redirector
 
-            if not self._model_checked:
-                installed = ollama.list()
-                model_names = {
-                    getattr(item, "model", "")
-                    for item in installed.models
-                }
 
-                if not any(
-                    name == HIDDEN_MODEL
-                    or name.startswith(HIDDEN_MODEL + ":")
-                    for name in model_names
-                ):
-                    raise RuntimeError(
-                        "The local timetable reader is not installed yet.\n\n"
-                        "Run this once in PowerShell:\n"
-                        f"ollama pull {HIDDEN_MODEL}"
-                    )
 
-                self._model_checked = True
-
-            result = extract_with_ollama(
-                timetable_image=timetable,
-                weeks_image=weeks,
-                model=HIDDEN_MODEL,
-            )
-
-            self.ui_queue.put(("success", result))
-
-        except Exception as exc:
-            self.ui_queue.put(("error", str(exc)))
-
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
 
     def _drain_queue(self) -> None:
-        try:
-            while True:
-                kind, payload = self.ui_queue.get_nowait()
+        for kind, payload in self.extraction_controller.drain_messages():
+            if kind == "engine_log":
+                continue
 
-                if kind == "engine_log":
-                    continue
+            if kind == "success":
+                elapsed = self._stop_timer()
+                self.extraction = payload
+                try:
+                    timetable = Path(self.timetable_path.get().strip())
+                    weeks = Path(self.weeks_path.get().strip())
+                    self.extraction_controller.remember(timetable, weeks)
+                except OSError:
+                    self.extraction_controller.reset()
 
-                if kind == "success":
+                self.progress.stop()
+                self.progress.configure(mode="determinate")
+                self.progress.set(1)
+                self.create_button.configure(state="normal")
+                self.review_button.configure(state="normal")
+                self.download_button.configure(state="normal")
+                self.status_text.set(
+                    f"Timetable ready — {len(payload.classes)} classes found "
+                    f"in {elapsed:.1f}s."
+                )
 
-
-                    elapsed = self._stop_timer()
-                    self.extraction = payload
-
-                    try:
-                        timetable = Path(self.timetable_path.get().strip())
-                        weeks = Path(self.weeks_path.get().strip())
-                        self._extraction_signature = (
-                            self._file_signature(timetable),
-                            self._file_signature(weeks),
-                        )
-                    except OSError:
-                        self._extraction_signature = None
-
-                    self.progress.stop()
-                    self.progress.configure(mode="determinate")
-                    self.progress.set(1)
-
-                    self.create_button.configure(state="normal")
-                    self.review_button.configure(state="normal")
-                    self.download_button.configure(state="normal")
-
-                    self.status_text.set(
-                        f"Timetable ready — {len(payload.classes)} classes found "
-                        f"in {elapsed:.1f}s."
-                    )
-
-                elif kind == "error":
-                    self._stop_timer()
-                    self.progress.stop()
-                    self.progress.configure(mode="determinate")
-                    self.progress.set(0)
-
-                    self.create_button.configure(state="normal")
-                    self.review_button.configure(state="disabled")
-                    self.download_button.configure(state="disabled")
-
-                    self.status_text.set(
-                        "Could not create timetable."
-                    )
-
-                    messagebox.showerror(
-                        "Could not create timetable",
-                        payload,
-                    )
-
-        except queue.Empty:
-            pass
+            elif kind == "error":
+                self._stop_timer()
+                self.progress.stop()
+                self.progress.configure(mode="determinate")
+                self.progress.set(0)
+                self.create_button.configure(state="normal")
+                self.review_button.configure(state="disabled")
+                self.download_button.configure(state="disabled")
+                self.status_text.set("Could not create timetable.")
+                messagebox.showerror("Could not create timetable", payload)
 
         self.after(100, self._drain_queue)
-
-
-
 
 
     def _build_ics(self) -> Path:

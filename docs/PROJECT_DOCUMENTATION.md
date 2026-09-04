@@ -33,6 +33,7 @@ Select both screenshots, create the timetable, review the detected classes, and 
 - `ul_calendar_creator/services/timetable_extraction.py`: Ollama inference, caching coordination, and extraction validation
 - `ul_calendar_creator/services/teaching_weeks.py`: teaching-week parsing and formatting
 - `ul_calendar_creator/ui/editable_class_row.py`: editable timetable review-row component
+- `ul_calendar_creator/ui/extraction_controller.py`: extraction worker, model checks, queue, file signatures, and timer state
 - `ul_calendar_creator/ui/app.py`: desktop application window and UI workflows
 - `timetable_to_calender.py`: older standalone implementation
 
