@@ -731,7 +731,7 @@ class ULCalendarApp(ctk.CTk):
 
         generated_dir = (
             Path(tempfile.gettempdir())
-            / "ULCalendarCreator"
+            / "ScheduleScanner"
         )
         generated_dir.mkdir(
             parents=True,

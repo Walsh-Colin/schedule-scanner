@@ -333,7 +333,7 @@ def extract_with_ollama(
     print(f"\nReading teaching weeks locally with {model}...")
 
     weeks_prompt = r"""
-You are reading a University of Limerick teaching-week screenshot.
+You are reading a teaching-week screenshot.
 
 Extract EVERY visible teaching-week row.
 For each row return:
@@ -373,7 +373,7 @@ Return only JSON matching the supplied schema.
     print("Day assignments come from column position, not the LLM.")
 
     block_prompt = r"""
-This image crop contains ONE University of Limerick timetable class block.
+This image crop contains ONE timetable class block.
 
 Read ONLY the text visible in this one block.
 

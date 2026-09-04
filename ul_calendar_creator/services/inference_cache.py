@@ -6,7 +6,7 @@ import tempfile
 
 INFERENCE_CACHE_DIR = (
     Path(tempfile.gettempdir())
-    / "ULCalendarCreator"
+    / "ScheduleScanner"
     / "inference-cache"
 )
 

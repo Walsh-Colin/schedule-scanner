@@ -1,8 +1,8 @@
-# UL Calendar Creator Documentation
+# Schedule Scanner Documentation
 
 ## Overview
 
-UL Calendar Creator converts a weekly timetable screenshot and a teaching-week table screenshot into an iCalendar (`.ics`) file. OpenCV identifies timetable geometry and a local Ollama vision model reads the contents. No API key or Google Calendar API is required.
+Schedule Scanner converts a weekly timetable screenshot and a teaching-week table screenshot into an iCalendar (`.ics`) file. OpenCV identifies timetable geometry and a local Ollama vision model reads the contents. No API key or Google Calendar API is required.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ The teaching-week screenshot and individual class crops are processed separately
 
 ## Inference cache
 
-Inference results are cached in the operating system's temporary `ULCalendarCreator/inference-cache` directory. Keys include the model, schema, prompt, inference limits, and image bytes. Cache failures do not interrupt extraction, and the UI can clear cached results.
+Inference results are cached in the operating system's temporary `ScheduleScanner/inference-cache` directory. Keys include the model, schema, prompt, inference limits, and image bytes. Cache failures do not interrupt extraction, and the UI can clear cached results.
 
 ## Teaching weeks and validation
 
