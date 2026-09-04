@@ -1,5 +1,6 @@
 ## Summary
 
+<<<<<<< HEAD
 <!-- Briefly explain what this pull request changes. -->
 
 
@@ -34,3 +35,28 @@
 - [ ] I reviewed my own changes
 - [ ] I did not commit generated or sensitive files
 - [ ] My commit messages follow the project format
+=======
+<!-- Briefly explain what this pull request changes and why. -->
+
+## Testing
+
+<!-- Describe how you tested these changes. -->
+
+- [ ] Tests pass locally
+- [ ] I manually tested the affected workflow
+
+## Screenshots
+
+<!-- Add screenshots for visual changes, or write "Not applicable". -->
+
+## Checklist
+
+- [ ] My changes are focused on the purpose of this pull request
+- [ ] I have updated documentation where needed
+- [ ] I have not committed secrets, generated files, or unrelated changes
+
+## Related issue
+
+<!-- Use "Closes #123" when this pull request resolves an issue. -->
+
+>>>>>>> 323e86f260985e079daa40c3470fac5d1740bd5f
