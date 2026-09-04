@@ -15,15 +15,13 @@ try:
     from ..models import TimetableExtraction
     from ..services.calendar_export import create_ics
     from ..services.inference_cache import clear_inference_cache
-    from ..services.timetable_extraction import validate_extraction
 except ImportError:
     from models import TimetableExtraction
     from services.calendar_export import create_ics
     from services.inference_cache import clear_inference_cache
-    from services.timetable_extraction import validate_extraction
 
-from .editable_class_row import EditableClassRow
 from .extraction_controller import ExtractionController
+from .review_view import ReviewView
 from .theme import (
     APP_ICON_FILE,
     APP_ICON_ICO_FILE,
@@ -33,7 +31,6 @@ from .theme import (
     BLUE_HOVER,
     BORDER,
     CARD,
-    DAY_INDEX,
     HIDDEN_MODEL,
     LIGHT_BLUE,
     MUTED,
@@ -90,7 +87,7 @@ class ULCalendarApp(ctk.CTk):
         self.extraction: TimetableExtraction | None = None
         self.generated_ics: Path | None = None
         self.extraction_controller = ExtractionController(HIDDEN_MODEL)
-        self.class_rows: list[EditableClassRow] = []
+        self.review_view: ReviewView | None = None
         self.timer_text = ctk.StringVar(value="Time: 0.0s")
 
         self._build_shell()
@@ -521,198 +518,42 @@ class ULCalendarApp(ctk.CTk):
 
 
 
+
+
+
+
+
+
+
+
     def _show_review_view(self) -> None:
         if self.extraction is None:
-            messagebox.showerror(
-                APP_TITLE,
-                "Create the timetable first.",
-            )
+            messagebox.showerror(APP_TITLE, "Create the timetable first.")
             return
 
         self._clear_content()
-
         self.header_title.configure(text="Review Timetable")
         self.header_subtitle.configure(
             text="Edit any detected class details below before downloading your calendar."
         )
-
-        review = ctk.CTkFrame(
+        self.review_view = ReviewView(
             self.content_host,
-            fg_color="transparent",
-        )
-        review.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-        )
-        review.grid_columnconfigure(0, weight=1)
-        review.grid_rowconfigure(1, weight=1)
-
-        header_row = ctk.CTkFrame(
-            review,
-            fg_color="transparent",
-        )
-        header_row.grid(
-            row=0,
-            column=0,
-            sticky="w",
-            pady=(0, 4),
-        )
-
-        headers = [
-            ("Day", 100),
-            ("Start", 72),
-            ("End", 72),
-            ("Code", 90),
-            ("Class type", 130),
-            ("Professor", 165),
-            ("Room", 105),
-            ("Weeks", 105),
-        ]
-
-        for col, (label, width) in enumerate(headers):
-            ctk.CTkLabel(
-                header_row,
-                text=label,
-                text_color=TEXT,
-                width=width,
-                font=ctk.CTkFont(weight="bold"),
-            ).grid(
-                row=0,
-                column=col,
-                padx=3,
-                pady=4,
-            )
-
-        self.rows_frame = ctk.CTkScrollableFrame(
-            review,
-            fg_color="transparent",
-        )
-        self.rows_frame.grid(
-            row=1,
-            column=0,
-            sticky="nsew",
-        )
-
-        self.class_rows.clear()
-
-        classes = sorted(
-            self.extraction.classes,
-            key=lambda cls: (
-                DAY_INDEX[cls.day],
-                cls.start_time,
-                cls.end_time,
-            ),
-        )
-
-        for cls in classes:
-            row = EditableClassRow(
-                self.rows_frame,
-                cls,
-                self._delete_review_row,
-            )
-            self.class_rows.append(row)
-
-        self._regrid_review_rows()
-
-        self.footer.grid_columnconfigure(0, weight=1)
-        self.footer.grid_columnconfigure(1, weight=0)
-        self.footer.grid_columnconfigure(2, weight=0)
-
-        ctk.CTkButton(
             self.footer,
-            text="←  Back",
-            width=140,
-            height=52,
-            fg_color="transparent",
-            hover_color="#edf3fb",
-            text_color=TEXT,
-            border_width=1,
-            border_color=BORDER,
-            command=self._show_main_view,
-        ).grid(
-            row=0,
-            column=1,
-            padx=(0, 10),
+            self.extraction,
+            self._show_main_view,
+            self._apply_review_changes,
         )
 
-        ctk.CTkButton(
-            self.footer,
-            text="Save Changes",
-            width=170,
-            height=52,
-            fg_color=BLUE,
-            hover_color=BLUE_HOVER,
-            font=ctk.CTkFont(size=15, weight="bold"),
-            command=self._save_review_changes,
-        ).grid(
-            row=0,
-            column=2,
-        )
-
-    def _delete_review_row(
+    def _apply_review_changes(
         self,
-        row: EditableClassRow,
+        edited: TimetableExtraction,
     ) -> None:
-        if row in self.class_rows:
-            self.class_rows.remove(row)
-            row.destroy()
-            self._regrid_review_rows()
-
-    def _regrid_review_rows(self) -> None:
-        for index, row in enumerate(self.class_rows):
-            row.grid(index)
-
-    def _save_review_changes(self) -> None:
-        try:
-            if self.extraction is None:
-                raise RuntimeError("No timetable is loaded.")
-
-            valid_weeks = {
-                week.week
-                for week in self.extraction.teaching_weeks
-            }
-
-            classes = [
-                row.to_class_entry(valid_weeks)
-                for row in self.class_rows
-            ]
-
-            if not classes:
-                raise RuntimeError(
-                    "There are no classes to save."
-                )
-
-            edited = TimetableExtraction(
-                teaching_weeks=self.extraction.teaching_weeks,
-                classes=classes,
-            )
-
-            issues = validate_extraction(edited)
-            if issues:
-                raise RuntimeError(
-                    "Please fix these timetable details:\n\n"
-                    + "\n".join(
-                        f"• {issue}"
-                        for issue in issues
-                    )
-                )
-
-            self.extraction = edited
-            self.generated_ics = None
-            self.status_text.set(
-                f"Changes saved — {len(edited.classes)} classes ready."
-            )
-            self._show_main_view()
-
-        except (ValidationError, ValueError, RuntimeError) as exc:
-            messagebox.showerror(
-                "Cannot save changes",
-                str(exc),
-            )
-
-
-
+        self.extraction = edited
+        self.generated_ics = None
+        self.status_text.set(
+            f"Changes saved — {len(edited.classes)} classes ready."
+        )
+        self._show_main_view()
 
 
     @staticmethod
