@@ -41,7 +41,7 @@ from .theme import (
 
 
 
-class ULCalendarApp(ctk.CTk):
+class ScheduleScannerApp(ctk.CTk):
     def __init__(self) -> None:
         if sys.platform == "win32":
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
