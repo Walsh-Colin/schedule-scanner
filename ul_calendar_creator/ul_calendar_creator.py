@@ -53,7 +53,6 @@ Run:
 
 from __future__ import annotations
 
-import re
 import time as time_module
 import os
 import hashlib
@@ -91,6 +90,7 @@ if __package__:
         INFERENCE_CACHE_DIR,
         clear_inference_cache,
     )
+    from .services.teaching_weeks import compress_weeks, parse_week_text
 else:
     # Support launching this file directly from an IDE or with Python.
     from models import (
@@ -105,6 +105,7 @@ else:
         INFERENCE_CACHE_DIR,
         clear_inference_cache,
     )
+    from services.teaching_weeks import compress_weeks, parse_week_text
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -726,97 +727,6 @@ def make_block_crop_bytes(
 
 
 
-def parse_week_text(
-    week_text: str,
-    valid_week_numbers: set[int] | None = None,
-) -> list[int]:
-    """
-    Convert literal timetable week text into exact week numbers.
-
-    Supported examples:
-      Wks:1-12
-      Wks:2-11
-      Wks:6
-      Wks:1,3,5
-      Wks:1-5,7-9
-      Wks: 1–4, 6, 8-10
-
-    No default end week is ever assumed.
-    """
-    original = week_text.strip()
-
-    text = original.casefold()
-    text = (
-        text.replace("weeks", "")
-        .replace("week", "")
-        .replace("wks", "")
-        .replace("wk", "")
-        .replace(":", "")
-        .replace(";", ",")
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
-
-    # Keep only digits, commas, hyphens and whitespace.
-    text = re.sub(r"[^0-9,\-\s]", "", text)
-    text = re.sub(r"\s*-\s*", "-", text)
-    text = re.sub(r"\s+", ",", text)
-    text = re.sub(r",+", ",", text).strip(",")
-
-    if not text:
-        raise ValueError(
-            f"Could not parse teaching weeks from {original!r}."
-        )
-
-    weeks: list[int] = []
-
-    for part in text.split(","):
-        part = part.strip()
-        if not part:
-            continue
-
-        if "-" in part:
-            pieces = [piece for piece in part.split("-") if piece]
-            if len(pieces) != 2:
-                raise ValueError(
-                    f"Ambiguous week range {part!r} in {original!r}."
-                )
-
-            start = int(pieces[0])
-            end = int(pieces[1])
-
-            if start > end:
-                raise ValueError(
-                    f"Reversed week range {part!r} in {original!r}."
-                )
-
-            weeks.extend(range(start, end + 1))
-        else:
-            weeks.append(int(part))
-
-    weeks = sorted(set(weeks))
-
-    if not weeks:
-        raise ValueError(
-            f"No teaching weeks found in {original!r}."
-        )
-
-    if min(weeks) < 1 or max(weeks) > 60:
-        raise ValueError(
-            f"Invalid teaching week in {original!r}: {weeks}"
-        )
-
-    if valid_week_numbers is not None:
-        unknown = sorted(set(weeks) - valid_week_numbers)
-        if unknown:
-            raise ValueError(
-                f"Week text {original!r} contains weeks not present "
-                f"in the teaching-weeks screenshot: {unknown}"
-            )
-
-    return weeks
-
 def extract_with_ollama(
     images: list[Path] | None = None,
     *,
@@ -1001,48 +911,6 @@ Return only JSON matching the supplied schema.
         )
 
     return result
-
-
-def compress_weeks(
-    weeks: list[int],
-) -> str:
-    weeks = sorted(set(weeks))
-
-    if not weeks:
-        return ""
-
-    parts: list[str] = []
-
-    start = weeks[0]
-    previous = weeks[0]
-
-    for week in weeks[1:]:
-        if week == previous + 1:
-            previous = week
-            continue
-
-        if start == previous:
-            parts.append(
-                str(start)
-            )
-        else:
-            parts.append(
-                f"{start}-{previous}"
-            )
-
-        start = week
-        previous = week
-
-    if start == previous:
-        parts.append(
-            str(start)
-        )
-    else:
-        parts.append(
-            f"{start}-{previous}"
-        )
-
-    return ", ".join(parts)
 
 
 def module_text(
