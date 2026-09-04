@@ -25,11 +25,12 @@ Select both screenshots, create the timetable, review the detected classes, and 
 
 ## Package structure
 
-- `ul_calendar_creator/ul_calendar_creator.py`: orchestration, inference, validation, and desktop UI
+- `ul_calendar_creator/ul_calendar_creator.py`: application orchestration and desktop UI
 - `ul_calendar_creator/services/calendar_export.py`: iCalendar event and file generation
 - `ul_calendar_creator/models/timetable.py`: validated Pydantic models
 - `ul_calendar_creator/services/inference_cache.py`: cached inference storage
 - `ul_calendar_creator/services/layout_detection.py`: timetable geometry and image crops
+- `ul_calendar_creator/services/timetable_extraction.py`: Ollama inference, caching coordination, and extraction validation
 - `ul_calendar_creator/services/teaching_weeks.py`: teaching-week parsing and formatting
 - `timetable_to_calender.py`: older standalone implementation
 
