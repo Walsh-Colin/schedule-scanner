@@ -1,14 +1,9 @@
 ## Summary
 
-<<<<<<< HEAD
 <!-- Briefly explain what this pull request changes. -->
 
 
 ## Changes
-
--
--
-
 
 ## Testing
 
@@ -58,5 +53,3 @@
 ## Related issue
 
 <!-- Use "Closes #123" when this pull request resolves an issue. -->
-
->>>>>>> 323e86f260985e079daa40c3470fac5d1740bd5f
