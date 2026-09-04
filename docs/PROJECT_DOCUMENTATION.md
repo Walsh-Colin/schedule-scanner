@@ -8,10 +8,10 @@ UL Calendar Creator converts a weekly timetable screenshot and a teaching-week t
 
 - Python 3.10 or newer
 - Ollama with the `qwen2.5vl:3b` model
-- `ollama`, `pydantic`, `icalendar`, `opencv-python`, `numpy`, and `customtkinter`
+- `ollama`, `pydantic`, `icalendar`, `opencv-python`, `numpy`, `Pillow`, and `customtkinter`
 
 ```powershell
-python -m pip install --upgrade ollama pydantic icalendar opencv-python numpy customtkinter
+python -m pip install --upgrade ollama pydantic icalendar opencv-python numpy Pillow customtkinter
 ollama pull qwen2.5vl:3b
 ```
 
@@ -64,6 +64,8 @@ The command-line output is `output/classes.ics`. The desktop UI builds a tempora
 ## User interface
 
 The CustomTkinter interface supports screenshot selection, background extraction, progress and timing, cached-result reuse, editable class review, row deletion, validation, and calendar download. A queue returns worker-thread results to the Tk event loop so the interface remains responsive.
+
+The artwork in `ul_calendar_creator/images/CalGen.png` is used in the main header and as the cross-platform window icon. Its `CalGen.ico` variant supplies the Windows title-bar and taskbar icon.
 
 ## Configuration
 

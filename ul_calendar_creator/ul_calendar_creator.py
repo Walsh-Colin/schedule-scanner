@@ -3,6 +3,7 @@ from __future__ import annotations
 import time as time_module
 import os
 import hashlib
+import ctypes
 import shutil
 import threading
 import queue
@@ -14,7 +15,8 @@ from datetime import date, datetime
 from pathlib import Path
 import ollama
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from PIL import Image
+from tkinter import PhotoImage, filedialog, messagebox
 from pydantic import BaseModel, ValidationError
 
 if __package__:
@@ -69,6 +71,9 @@ else:
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+APP_ICON_FILE = Path(__file__).resolve().parent / "images" / "CalGen.png"
+APP_ICON_ICO_FILE = Path(__file__).resolve().parent / "images" / "CalGen.ico"
+WINDOWS_APP_ID = "UL.CalendarCreator"
 
 INPUT_DIR = BASE_DIR / "input"
 OLLAMA_MODEL = "qwen2.5vl:3b"
@@ -783,6 +788,11 @@ class EditableClassRow:
 
 class ULCalendarApp(ctk.CTk):
     def __init__(self) -> None:
+        if sys.platform == "win32":
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                WINDOWS_APP_ID
+            )
+
         super().__init__()
 
         ctk.set_appearance_mode("light")
@@ -790,6 +800,16 @@ class ULCalendarApp(ctk.CTk):
 
         self.title(APP_TITLE)
         self.configure(fg_color=BG)
+        self.window_icon = PhotoImage(file=str(APP_ICON_FILE))
+        self.iconphoto(True, self.window_icon)
+        if sys.platform == "win32":
+            self.iconbitmap(default=str(APP_ICON_ICO_FILE))
+        icon_source = Image.open(APP_ICON_FILE)
+        self.header_icon_image = ctk.CTkImage(
+            light_image=icon_source,
+            dark_image=icon_source,
+            size=(80, 60),
+        )
 
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
@@ -868,6 +888,7 @@ class ULCalendarApp(ctk.CTk):
 
         self.header_icon = ctk.CTkLabel(
             self.header,
+            image=self.header_icon_image,
             text="▣",
             width=72,
             height=72,
@@ -876,6 +897,7 @@ class ULCalendarApp(ctk.CTk):
             text_color=BLUE,
             font=ctk.CTkFont(size=34, weight="bold"),
         )
+        self.header_icon.configure(text="")
         self.header_icon.grid(
             row=0,
             column=0,

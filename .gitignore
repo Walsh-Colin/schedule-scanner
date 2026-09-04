@@ -1,4 +1,4 @@
 .env
-*.png
 __pycache__/
 *.py[cod]
+/input/
