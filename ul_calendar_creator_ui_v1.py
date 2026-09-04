@@ -105,6 +105,11 @@ WEEKS_NUM_CTX = 6144
 WEEKS_NUM_PREDICT = 768
 OLLAMA_KEEP_ALIVE = "15m"
 USE_INFERENCE_CACHE = True
+INFERENCE_CACHE_DIR = (
+    Path(tempfile.gettempdir())
+    / "ULCalendarCreator"
+    / "inference-cache"
+)
 
 
 DAYS = [
@@ -447,12 +452,7 @@ def _ollama_json(
             cache_key.update(b"\0")
         cache_key.update(image_bytes)
 
-        cache_dir = (
-            Path(tempfile.gettempdir())
-            / "ULCalendarCreator"
-            / "inference-cache"
-        )
-        cache_file = cache_dir / f"{cache_key.hexdigest()}.json"
+        cache_file = INFERENCE_CACHE_DIR / f"{cache_key.hexdigest()}.json"
 
         try:
             cached = schema_model.model_validate_json(
@@ -576,24 +576,40 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
     )
 
     vertical_projection = (vertical_lines > 0).sum(axis=0)
-    x_candidates = np.where(vertical_projection > height * 0.55)[0]
-    x_groups = _group_consecutive(x_candidates)
 
-    boundaries = [
-        int(round((left + right) / 2))
-        for left, right in x_groups
-    ]
-
-    # Remove near-duplicates and retain only plausible full-height boundaries.
+    # Some exported/cropped timetable images contain broken or partial-height
+    # column borders. Start with the original strict test, then progressively
+    # accept shorter lines only when it did not find enough day boundaries.
     clean_boundaries: list[int] = []
-    for x in boundaries:
-        if not clean_boundaries or x - clean_boundaries[-1] >= max(20, width // 50):
-            clean_boundaries.append(x)
+    projection_fraction = 0.55
+    for candidate_fraction in (0.55, 0.45, 0.35, 0.25):
+        x_candidates = np.where(
+            vertical_projection > height * candidate_fraction
+        )[0]
+        x_groups = _group_consecutive(x_candidates)
+        boundaries = [
+            int(round((left + right) / 2))
+            for left, right in x_groups
+        ]
+
+        candidate_boundaries: list[int] = []
+        for x in boundaries:
+            if (
+                not candidate_boundaries
+                or x - candidate_boundaries[-1] >= max(20, width // 50)
+            ):
+                candidate_boundaries.append(x)
+
+        clean_boundaries = candidate_boundaries
+        projection_fraction = candidate_fraction
+        if len(clean_boundaries) >= 6:
+            break
 
     if len(clean_boundaries) < 6:
         raise RuntimeError(
             "OpenCV could not detect enough timetable day columns. "
-            f"Detected boundaries: {clean_boundaries}"
+            f"Detected boundaries: {clean_boundaries} "
+            f"(minimum line coverage tried: {projection_fraction:.0%})."
         )
 
     # The dark green header is a wide dark band near the top.
@@ -1742,6 +1758,27 @@ class ULCalendarApp(ctk.CTk):
             pady=(0, 2),
         )
 
+        self.clear_cache_button = ctk.CTkButton(
+            self.header,
+            text="Developer: Clear Cache",
+            width=170,
+            height=38,
+            fg_color="transparent",
+            hover_color="#edf3fb",
+            text_color=BLUE,
+            border_width=1,
+            border_color=BLUE,
+            font=ctk.CTkFont(size=13),
+            command=self._clear_developer_cache,
+        )
+        self.clear_cache_button.grid(
+            row=0,
+            column=2,
+            rowspan=2,
+            sticky="e",
+            padx=(20, 0),
+        )
+
         ctk.CTkFrame(
             self.outer,
             height=1,
@@ -1793,6 +1830,36 @@ class ULCalendarApp(ctk.CTk):
             widget.destroy()
         for widget in self.footer.winfo_children():
             widget.destroy()
+
+    def _clear_developer_cache(self) -> None:
+        """Clear disk and in-memory extraction caches for repeat testing."""
+        if self._timer_running:
+            messagebox.showinfo(
+                APP_TITLE,
+                "Please wait for the current timetable extraction to finish.",
+            )
+            return
+
+        try:
+            shutil.rmtree(INFERENCE_CACHE_DIR, ignore_errors=False)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            messagebox.showerror(
+                APP_TITLE,
+                f"Could not clear the inference cache:\n\n{exc}",
+            )
+            return
+
+        self.extraction = None
+        self.generated_ics = None
+        self._extraction_signature = None
+        self.timer_text.set("Time: 0.0s")
+        self.status_text.set(
+            "Cache cleared. Create the timetable to run a fresh test."
+        )
+        self._show_main_view()
+        messagebox.showinfo(APP_TITLE, "Developer cache cleared.")
 
     # ------------------------------------------------------------------
     # Main view
