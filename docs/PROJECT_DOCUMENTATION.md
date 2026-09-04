@@ -34,6 +34,7 @@ Select both screenshots, create the timetable, review the detected classes, and 
 - `ul_calendar_creator/services/teaching_weeks.py`: teaching-week parsing and formatting
 - `ul_calendar_creator/ui/editable_class_row.py`: editable timetable review-row component
 - `ul_calendar_creator/ui/extraction_controller.py`: extraction worker, model checks, queue, file signatures, and timer state
+- `ul_calendar_creator/ui/theme.py`: visual theme, application identity, asset paths, and shared UI configuration
 - `ul_calendar_creator/ui/app.py`: desktop application window and UI workflows
 - `timetable_to_calender.py`: older standalone implementation
 

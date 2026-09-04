@@ -24,35 +24,22 @@ except ImportError:
 
 from .editable_class_row import EditableClassRow
 from .extraction_controller import ExtractionController
-
-
-PACKAGE_DIR = Path(__file__).resolve().parents[1]
-APP_ICON_FILE = PACKAGE_DIR / "images" / "CalGen.png"
-APP_ICON_ICO_FILE = PACKAGE_DIR / "images" / "CalGen.ico"
-WINDOWS_APP_ID = "UL.CalendarCreator"
-
-APP_TITLE = "UL Calendar Creator"
-HIDDEN_MODEL = "qwen2.5vl:3b"
-
-BG = "#f5f7fb"
-CARD = "#ffffff"
-BORDER = "#d9e1ec"
-TEXT = "#10213a"
-MUTED = "#66758a"
-BLUE = "#1769e0"
-BLUE_HOVER = "#0f58c2"
-LIGHT_BLUE = "#eef5ff"
-
-DAYS = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-]
-DAY_INDEX = {day: index for index, day in enumerate(DAYS)}
+from .theme import (
+    APP_ICON_FILE,
+    APP_ICON_ICO_FILE,
+    APP_TITLE,
+    BG,
+    BLUE,
+    BLUE_HOVER,
+    BORDER,
+    CARD,
+    DAY_INDEX,
+    HIDDEN_MODEL,
+    LIGHT_BLUE,
+    MUTED,
+    TEXT,
+    WINDOWS_APP_ID,
+)
 
 
 

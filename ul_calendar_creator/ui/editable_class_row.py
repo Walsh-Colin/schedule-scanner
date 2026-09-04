@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 import customtkinter as ctk
+from .theme import DAYS
 
 try:
     from ..models import ClassEntry
@@ -8,18 +9,6 @@ try:
 except ImportError:
     from models import ClassEntry
     from services.teaching_weeks import compress_weeks, parse_week_text
-
-
-DAYS = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-]
-
 
 class EditableClassRow:
     def __init__(
