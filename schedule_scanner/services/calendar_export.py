@@ -92,7 +92,7 @@ def make_event(cls: ClassEntry, week_lookup: dict[int, date]) -> Event:
     )
     event.add(
         "uid",
-        f"{uuid.uuid5(uuid.NAMESPACE_URL, uid_source)}@ul-calendar",
+        f"{uuid.uuid5(uuid.NAMESPACE_URL, uid_source)}@schedule-scanner",
     )
     event.add("dtstamp", datetime.now(timezone.utc))
     event.add("summary", event_title(cls))
@@ -151,10 +151,10 @@ def create_ics(
     }
 
     calendar = Calendar()
-    calendar.add("prodid", "-//UL Calendar Creator//EN")
+    calendar.add("prodid", "-//Schedule Scanner//EN")
     calendar.add("version", "2.0")
     calendar.add("calscale", "GREGORIAN")
-    calendar.add("x-wr-calname", "UL Timetable")
+    calendar.add("x-wr-calname", "Schedule Scanner")
     calendar.add("x-wr-timezone", TIMEZONE)
 
     classes = sorted(

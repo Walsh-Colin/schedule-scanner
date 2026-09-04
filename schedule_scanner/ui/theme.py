@@ -4,9 +4,9 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
 APP_ICON_FILE = PACKAGE_DIR / "images" / "CalGen.png"
 APP_ICON_ICO_FILE = PACKAGE_DIR / "images" / "CalGen.ico"
-WINDOWS_APP_ID = "UL.CalendarCreator"
+WINDOWS_APP_ID = "ScheduleScanner.Desktop"
 
-APP_TITLE = "UL Calendar Creator"
+APP_TITLE = "Schedule Scanner"
 HIDDEN_MODEL = "qwen2.5vl:3b"
 
 BG = "#f5f7fb"

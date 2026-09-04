@@ -41,7 +41,7 @@ from .theme import (
 
 
 
-class ULCalendarApp(ctk.CTk):
+class ScheduleScannerApp(ctk.CTk):
     def __init__(self) -> None:
         if sys.platform == "win32":
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
@@ -731,7 +731,7 @@ class ULCalendarApp(ctk.CTk):
 
         generated_dir = (
             Path(tempfile.gettempdir())
-            / "ULCalendarCreator"
+            / "ScheduleScanner"
         )
         generated_dir.mkdir(
             parents=True,
