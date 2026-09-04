@@ -45,7 +45,7 @@ The application accepts PNG, JPEG, and WebP screenshots. Automatic input discove
 
 OpenCV detects long vertical lines to establish day columns, progressively relaxing its line-coverage threshold for partial borders. The header band determines where the timetable body begins. Grid lines are removed, remaining text is grouped into connected regions, and each region is assigned a weekday strictly from its geometry. The vision model does not choose weekdays.
 
-Each class region is padded, cropped, enlarged three times, and encoded as PNG bytes in memory. Layout debugging can be enabled in the layout service; annotated detections are then written to `output/layout_debug.png`.
+Each class region is padded, cropped, enlarged two times, and encoded as PNG bytes in memory. Layout debugging can be enabled in the layout service; annotated detections are then written to `output/layout_debug.png`.
 
 The teaching-week screenshot and individual class crops are processed separately. Ollama responses use Pydantic-generated JSON schemas and are retried up to three times when invalid. Smaller context and output budgets are used for class crops, and the model is kept alive between requests.
 

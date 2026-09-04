@@ -217,8 +217,8 @@ def make_block_crop_bytes(image: np.ndarray, block: DetectedBlock) -> bytes:
     enlarged = cv2.resize(
         crop,
         None,
-        fx=3,
-        fy=3,
+        fx=2,
+        fy=2,
         interpolation=cv2.INTER_CUBIC,
     )
     ok, encoded = cv2.imencode(
