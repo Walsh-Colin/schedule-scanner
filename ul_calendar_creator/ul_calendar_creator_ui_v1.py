@@ -80,13 +80,13 @@ from tkinter import filedialog, messagebox
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 if __package__:
-    from .inference_cache import (
+    from .services.inference_cache import (
         INFERENCE_CACHE_DIR,
         clear_inference_cache,
     )
 else:
     # Support launching this file directly from an IDE or with Python.
-    from inference_cache import (
+    from services.inference_cache import (
         INFERENCE_CACHE_DIR,
         clear_inference_cache,
     )
