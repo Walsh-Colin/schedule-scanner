@@ -32,6 +32,7 @@ Select both screenshots, create the timetable, review the detected classes, and 
 - `ul_calendar_creator/services/layout_detection.py`: timetable geometry and image crops
 - `ul_calendar_creator/services/timetable_extraction.py`: Ollama inference, caching coordination, and extraction validation
 - `ul_calendar_creator/services/teaching_weeks.py`: teaching-week parsing and formatting
+- `ul_calendar_creator/ui/editable_class_row.py`: editable timetable review-row component
 - `timetable_to_calender.py`: older standalone implementation
 
 ## Extraction pipeline

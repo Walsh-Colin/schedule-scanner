@@ -35,6 +35,7 @@ if __package__:
         validate_extraction,
     )
     from .services.teaching_weeks import compress_weeks, parse_week_text
+    from .ui import EditableClassRow
 else:
 
     from models import (
@@ -53,6 +54,7 @@ else:
         validate_extraction,
     )
     from services.teaching_weeks import compress_weeks, parse_week_text
+    from ui import EditableClassRow
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -244,8 +246,6 @@ MUTED = "#66758a"
 BLUE = "#1769e0"
 BLUE_HOVER = "#0f58c2"
 LIGHT_BLUE = "#eef5ff"
-DANGER = "#b42318"
-DANGER_HOVER = "#8f1c13"
 
 
 class TextRedirector:
@@ -260,79 +260,6 @@ class TextRedirector:
         pass
 
 
-class EditableClassRow:
-    def __init__(self, parent, cls: ClassEntry, on_delete) -> None:
-        self.frame = ctk.CTkFrame(parent, fg_color="transparent")
-
-        self.day = ctk.StringVar(value=cls.day)
-        self.start = ctk.StringVar(value=cls.start_time)
-        self.end = ctk.StringVar(value=cls.end_time)
-        self.code = ctk.StringVar(value=cls.module_code)
-        self.class_type = ctk.StringVar(value=cls.class_type)
-        self.lecturer = ctk.StringVar(value=cls.lecturer)
-        self.room = ctk.StringVar(value=cls.room)
-        self.weeks = ctk.StringVar(value=compress_weeks(cls.weeks))
-
-        ctk.CTkOptionMenu(
-            self.frame,
-            variable=self.day,
-            values=DAYS,
-            width=100,
-        ).grid(row=0, column=0, padx=3, pady=4)
-
-        specs = [
-            (self.start, 72),
-            (self.end, 72),
-            (self.code, 90),
-            (self.class_type, 130),
-            (self.lecturer, 165),
-            (self.room, 105),
-            (self.weeks, 105),
-        ]
-
-        for col, (var, width) in enumerate(specs, start=1):
-            ctk.CTkEntry(
-                self.frame,
-                textvariable=var,
-                width=width,
-            ).grid(row=0, column=col, padx=3, pady=4)
-
-        ctk.CTkButton(
-            self.frame,
-            text="×",
-            width=34,
-            fg_color=DANGER,
-            hover_color=DANGER_HOVER,
-            command=lambda: on_delete(self),
-        ).grid(row=0, column=8, padx=(6, 2), pady=4)
-
-    def grid(self, row: int) -> None:
-        self.frame.grid(
-            row=row,
-            column=0,
-            sticky="w",
-            padx=2,
-            pady=1,
-        )
-
-    def destroy(self) -> None:
-        self.frame.destroy()
-
-    def to_class_entry(self, valid_weeks: set[int]) -> ClassEntry:
-        return ClassEntry(
-            day=self.day.get().strip(),
-            start_time=self.start.get().strip(),
-            end_time=self.end.get().strip(),
-            module_code=self.code.get().strip().upper(),
-            module_name="",
-            class_type=self.class_type.get().strip(),
-            lecturer=self.lecturer.get().strip(),
-            room=self.room.get().strip(),
-            weeks=parse_week_text(
-                self.weeks.get().strip(),
-                valid_weeks,
-            ),
-        )
 
 
 class ULCalendarApp(ctk.CTk):
