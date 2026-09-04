@@ -1,4 +1,3 @@
-"""Data models exposed by UL Calendar Creator."""
 
 from .timetable import (
     ClassBlockRead,

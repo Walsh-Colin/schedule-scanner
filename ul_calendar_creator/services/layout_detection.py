@@ -1,4 +1,3 @@
-"""Detect timetable columns and class blocks from screenshot geometry."""
 
 from pathlib import Path
 
@@ -8,7 +7,7 @@ import numpy as np
 try:
     from ..models import DetectedBlock
 except ImportError:
-    # Support importing the service when the application file is run directly.
+
     from models import DetectedBlock
 
 
@@ -47,7 +46,6 @@ def _group_consecutive(values: np.ndarray) -> list[tuple[int, int]]:
 
 
 def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
-    """Detect day boundaries, the header bottom, and grid-free text."""
     height, width = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(gray, 225, 255, cv2.THRESH_BINARY_INV)
@@ -118,7 +116,6 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
 def detect_class_blocks(
     timetable_image: Path,
 ) -> tuple[np.ndarray, list[DetectedBlock]]:
-    """Detect text groups in each day column using screenshot geometry."""
     image = cv2.imread(str(timetable_image))
     if image is None:
         raise RuntimeError(f"Could not open timetable image: {timetable_image}")
@@ -186,7 +183,6 @@ def save_layout_debug(
     image: np.ndarray,
     blocks: list[DetectedBlock],
 ) -> None:
-    """Save an annotated block-detection image when debugging is enabled."""
     if not SAVE_LAYOUT_DEBUG:
         return
 
@@ -214,7 +210,6 @@ def save_layout_debug(
 
 
 def make_block_crop_bytes(image: np.ndarray, block: DetectedBlock) -> bytes:
-    """Crop, upscale, and encode one detected class entirely in memory."""
     crop = image[block.y0:block.y1, block.x0:block.x1]
     if crop.size == 0:
         raise RuntimeError(f"Empty crop detected for {block.day}.")

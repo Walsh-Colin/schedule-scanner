@@ -1,55 +1,5 @@
-#!/usr/bin/env python3
 
-"""
-UL Calendar Creator
 
-Reads two screenshots from ./input:
-
-1. Weekly timetable
-2. Teaching-week / week-commencing table
-
-Uses a local Ollama vision model to detect every visible scheduled class.
-No API key is required.
-
-Creates:
-
-    output/classes.ics
-
-Calendar event titles:
-
-    MODULE CODE - CLASS TYPE - PROFESSOR
-
-Example:
-
-    CS4297 - LAB - 2A - Andrew Ju
-
-Each event also includes:
-
-    Module code
-    Module name
-    Class type
-    Professor
-    Room
-    Teaching weeks
-    Original timetable time
-    Adjusted calendar time
-
-Classes finish 10 minutes before the timetable end time.
-
-No Google Calendar API is used.
-
-Required packages:
-
-    python -m pip install --upgrade ollama pydantic icalendar opencv-python numpy
-
-Local model:
-
-    ollama pull qwen2.5vl:3b
-
-Run:
-
-    python timetable_to_calender.py
-"""
 
 from __future__ import annotations
 
@@ -392,7 +342,6 @@ def _ollama_json(
     prompt: str,
     schema_model: type[BaseModel],
 ) -> BaseModel:
-    """Run one local vision request and validate its structured JSON."""
     schema = schema_model.model_json_schema()
     last_error: Exception | None = None
 
@@ -466,18 +415,10 @@ def _group_consecutive(values: np.ndarray) -> list[tuple[int, int]]:
 
 
 def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
-    """
-    Detect the timetable grid using long vertical lines.
-
-    Returns:
-      - x positions of the day-column boundaries
-      - y coordinate immediately below the dark day-header band
-      - binary image with grid lines removed
-    """
     height, width = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Dark text/grid becomes white in the working mask.
+
     _, binary = cv2.threshold(
         gray,
         225,
@@ -504,7 +445,7 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
         for left, right in x_groups
     ]
 
-    # Remove near-duplicates and retain only plausible full-height boundaries.
+
     clean_boundaries: list[int] = []
     for x in boundaries:
         if not clean_boundaries or x - clean_boundaries[-1] >= max(20, width // 50):
@@ -516,7 +457,7 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
             f"Detected boundaries: {clean_boundaries}"
         )
 
-    # The dark green header is a wide dark band near the top.
+
     dark_fraction = (binary > 0).mean(axis=1)
     header_rows = np.where(dark_fraction > 0.60)[0]
     header_groups = _group_consecutive(header_rows)
@@ -546,11 +487,6 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
 def detect_class_blocks(
     timetable_image: Path,
 ) -> tuple[np.ndarray, list[DetectedBlock]]:
-    """
-    Detect text groups inside each day column.
-
-    Day is determined ONLY from geometry. Ollama never chooses the day.
-    """
     image = cv2.imread(str(timetable_image))
     if image is None:
         raise RuntimeError(f"Could not open timetable image: {timetable_image}")
@@ -558,8 +494,8 @@ def detect_class_blocks(
     height, width = image.shape[:2]
     boundaries, body_top, text_only = detect_day_columns(image)
 
-    # UL screenshots normally contain Monday-Saturday. We only need intervals
-    # between consecutive full-height vertical boundaries.
+
+
     interval_count = min(len(boundaries) - 1, 7)
     if interval_count < 5:
         raise RuntimeError(
@@ -582,7 +518,7 @@ def detect_class_blocks(
         if right - left < 40:
             continue
 
-        # Stay a couple of pixels away from the grid borders.
+
         inner_left = left + 3
         inner_right = right - 3
 
@@ -616,8 +552,8 @@ def detect_class_blocks(
             if w < min_width or h < min_height:
                 continue
 
-            # Class blocks in this timetable contain several text rows.
-            # Tiny isolated artifacts are ignored.
+
+
             column_components.append((x, y, w, h, area))
 
         column_components.sort(key=lambda item: item[1])
@@ -697,8 +633,8 @@ def make_block_crop(
     if crop.size == 0:
         raise RuntimeError(f"Empty crop detected for {block.day}.")
 
-    # Upscale isolated text. The crop contains only one class, so this no
-    # longer damages timetable layout context because layout is already known.
+
+
     scale = 3
     enlarged = cv2.resize(
         crop,
@@ -716,19 +652,6 @@ def parse_week_text(
     week_text: str,
     valid_week_numbers: set[int] | None = None,
 ) -> list[int]:
-    """
-    Convert literal timetable week text into exact week numbers.
-
-    Supported examples:
-      Wks:1-12
-      Wks:2-11
-      Wks:6
-      Wks:1,3,5
-      Wks:1-5,7-9
-      Wks: 1–4, 6, 8-10
-
-    No default end week is ever assumed.
-    """
     original = week_text.strip()
 
     text = original.casefold()
@@ -744,7 +667,7 @@ def parse_week_text(
         .replace("−", "-")
     )
 
-    # Keep only digits, commas, hyphens and whitespace.
+
     text = re.sub(r"[^0-9,\-\s]", "", text)
     text = re.sub(r"\s*-\s*", "-", text)
     text = re.sub(r"\s+", ",", text)
@@ -806,13 +729,6 @@ def parse_week_text(
 def extract_with_ollama(
     images: list[Path],
 ) -> TimetableExtraction:
-    """
-    Hybrid extraction:
-
-    - OpenCV determines day columns and individual class regions.
-    - Ollama reads ONE isolated class crop at a time.
-    - Ollama never chooses the day or reasons about timetable layout.
-    """
     week_candidates = [p for p in images if "week" in p.stem.casefold()]
     timetable_candidates = [p for p in images if "timetable" in p.stem.casefold()]
 

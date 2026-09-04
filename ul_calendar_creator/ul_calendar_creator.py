@@ -1,55 +1,5 @@
-#!/usr/bin/env python3
 
-"""
-UL Calendar Creator
 
-Reads two screenshots from ./input:
-
-1. Weekly timetable
-2. Teaching-week / week-commencing table
-
-Uses a local Ollama vision model to detect every visible scheduled class.
-No API key is required.
-
-Creates:
-
-    output/classes.ics
-
-Calendar event titles:
-
-    MODULE CODE - CLASS TYPE - PROFESSOR
-
-Example:
-
-    CS4297 - LAB - 2A - Andrew Ju
-
-Each event also includes:
-
-    Module code
-    Module name
-    Class type
-    Professor
-    Room
-    Teaching weeks
-    Original timetable time
-    Adjusted calendar time
-
-Classes finish 10 minutes before the timetable end time.
-
-No Google Calendar API is used.
-
-Required packages:
-
-    python -m pip install --upgrade ollama pydantic icalendar opencv-python numpy customtkinter
-
-Local model:
-
-    ollama pull qwen2.5vl:3b
-
-Run:
-
-    python -m ul_calendar_creator.ul_calendar_creator_ui_v1
-"""
 
 from __future__ import annotations
 
@@ -92,7 +42,7 @@ if __package__:
     )
     from .services.teaching_weeks import compress_weeks, parse_week_text
 else:
-    # Support launching this file directly from an IDE or with Python.
+
     from models import (
         ClassBlockRead,
         ClassEntry,
@@ -122,10 +72,10 @@ MAX_EXTRACTION_ATTEMPTS = 3
 SAVE_LAYOUT_DEBUG = False
 END_EARLY_MINUTES = 10
 
-# Ollama performance tuning.
-# The old version allocated 16k context + 8k output tokens for every tiny
-# class crop. These structured responses are very small, so much smaller
-# budgets reduce inference overhead without changing the extraction task.
+
+
+
+
 CLASS_NUM_CTX = 4096
 CLASS_NUM_PREDICT = 384
 WEEKS_NUM_CTX = 6144
@@ -324,7 +274,6 @@ def _ollama_json(
     schema_model: type[BaseModel],
     image_name: str | None = None,
 ) -> BaseModel:
-    """Run one local vision request and validate its structured JSON."""
     schema = schema_model.model_json_schema()
     last_error: Exception | None = None
 
@@ -417,7 +366,7 @@ def _ollama_json(
                     )
                     temporary_cache_file.replace(cache_file)
                 except OSError:
-                    # Caching is optional and must not break extraction.
+
                     pass
 
             return validated
@@ -452,18 +401,10 @@ def _group_consecutive(values: np.ndarray) -> list[tuple[int, int]]:
 
 
 def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
-    """
-    Detect the timetable grid using long vertical lines.
-
-    Returns:
-      - x positions of the day-column boundaries
-      - y coordinate immediately below the dark day-header band
-      - binary image with grid lines removed
-    """
     height, width = image.shape[:2]
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Dark text/grid becomes white in the working mask.
+
     _, binary = cv2.threshold(
         gray,
         225,
@@ -483,9 +424,9 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
 
     vertical_projection = (vertical_lines > 0).sum(axis=0)
 
-    # Some exported/cropped timetable images contain broken or partial-height
-    # column borders. Start with the original strict test, then progressively
-    # accept shorter lines only when it did not find enough day boundaries.
+
+
+
     clean_boundaries: list[int] = []
     projection_fraction = 0.55
     for candidate_fraction in (0.55, 0.45, 0.35, 0.25):
@@ -518,7 +459,7 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
             f"(minimum line coverage tried: {projection_fraction:.0%})."
         )
 
-    # The dark green header is a wide dark band near the top.
+
     dark_fraction = (binary > 0).mean(axis=1)
     header_rows = np.where(dark_fraction > 0.60)[0]
     header_groups = _group_consecutive(header_rows)
@@ -548,11 +489,6 @@ def detect_day_columns(image: np.ndarray) -> tuple[list[int], int, np.ndarray]:
 def detect_class_blocks(
     timetable_image: Path,
 ) -> tuple[np.ndarray, list[DetectedBlock]]:
-    """
-    Detect text groups inside each day column.
-
-    Day is determined ONLY from geometry. Ollama never chooses the day.
-    """
     image = cv2.imread(str(timetable_image))
     if image is None:
         raise RuntimeError(f"Could not open timetable image: {timetable_image}")
@@ -560,8 +496,8 @@ def detect_class_blocks(
     height, width = image.shape[:2]
     boundaries, body_top, text_only = detect_day_columns(image)
 
-    # UL screenshots normally contain Monday-Saturday. We only need intervals
-    # between consecutive full-height vertical boundaries.
+
+
     interval_count = min(len(boundaries) - 1, 7)
     if interval_count < 5:
         raise RuntimeError(
@@ -584,7 +520,7 @@ def detect_class_blocks(
         if right - left < 40:
             continue
 
-        # Stay a couple of pixels away from the grid borders.
+
         inner_left = left + 3
         inner_right = right - 3
 
@@ -618,8 +554,8 @@ def detect_class_blocks(
             if w < min_width or h < min_height:
                 continue
 
-            # Class blocks in this timetable contain several text rows.
-            # Tiny isolated artifacts are ignored.
+
+
             column_components.append((x, y, w, h, area))
 
         column_components.sort(key=lambda item: item[1])
@@ -690,12 +626,6 @@ def make_block_crop_bytes(
     image: np.ndarray,
     block: DetectedBlock,
 ) -> bytes:
-    """
-    Crop and upscale one detected class entirely in memory.
-
-    Avoiding a temporary file for every class removes repeated filesystem
-    writes/reads while preserving the exact same 3x crop supplied to Ollama.
-    """
     crop = image[
         block.y0:block.y1,
         block.x0:block.x1,
@@ -741,19 +671,26 @@ else:
     )
 
 
+if __package__:
+    from .services.layout_detection import (
+        detect_class_blocks,
+        make_block_crop_bytes,
+        save_layout_debug,
+    )
+else:
+    from services.layout_detection import (
+        detect_class_blocks,
+        make_block_crop_bytes,
+        save_layout_debug,
+    )
+
+
 def extract_with_ollama(
     images: list[Path] | None = None,
     *,
     timetable_image: Path | None = None,
     weeks_image: Path | None = None,
 ) -> TimetableExtraction:
-    """
-    Hybrid extraction:
-
-    - OpenCV determines day columns and individual class regions.
-    - Ollama reads ONE isolated class crop at a time.
-    - Ollama never chooses the day or reasons about timetable layout.
-    """
     if timetable_image is not None and weeks_image is not None:
         timetable_image = Path(timetable_image)
         weeks_image = Path(weeks_image)
@@ -1308,9 +1245,9 @@ def create_ics(
 
 
 
-# ======================================================================
-# Concept-style Desktop UI — in-app review
-# ======================================================================
+
+
+
 
 APP_TITLE = "UL Calendar Creator"
 HIDDEN_MODEL = "qwen2.5vl:3b"
@@ -1447,12 +1384,12 @@ class ULCalendarApp(ctk.CTk):
         self.ui_queue: queue.Queue = queue.Queue()
         self.class_rows: list[EditableClassRow] = []
 
-        # Small UI/runtime caches.
+
         self._model_checked = False
         self._extraction_signature: tuple | None = None
 
-        # Visible extraction timer. It runs on Tk's UI event loop, so the
-        # counter stays live while Ollama works in the background thread.
+
+
         self._timer_started_at: float | None = None
         self._timer_running = False
         self.timer_text = ctk.StringVar(value="Time: 0.0s")
@@ -1461,9 +1398,9 @@ class ULCalendarApp(ctk.CTk):
         self._show_main_view()
         self.after(100, self._drain_queue)
 
-    # ------------------------------------------------------------------
-    # App shell / navigation
-    # ------------------------------------------------------------------
+
+
+
 
     def _build_shell(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -1619,7 +1556,6 @@ class ULCalendarApp(ctk.CTk):
             widget.destroy()
 
     def _clear_developer_cache(self) -> None:
-        """Clear disk and in-memory extraction caches for repeat testing."""
         if self._timer_running:
             messagebox.showinfo(
                 APP_TITLE,
@@ -1646,9 +1582,9 @@ class ULCalendarApp(ctk.CTk):
         self._show_main_view()
         messagebox.showinfo(APP_TITLE, "Developer cache cleared.")
 
-    # ------------------------------------------------------------------
-    # Main view
-    # ------------------------------------------------------------------
+
+
+
 
     def _show_main_view(self) -> None:
         self._clear_content()
@@ -1880,9 +1816,9 @@ class ULCalendarApp(ctk.CTk):
 
         setattr(self, label_attr, button)
 
-    # ------------------------------------------------------------------
-    # In-app review view
-    # ------------------------------------------------------------------
+
+
+
 
     def _show_review_view(self) -> None:
         if self.extraction is None:
@@ -2074,9 +2010,9 @@ class ULCalendarApp(ctk.CTk):
                 str(exc),
             )
 
-    # ------------------------------------------------------------------
-    # File selection
-    # ------------------------------------------------------------------
+
+
+
 
     @staticmethod
     def _image_filetypes():
@@ -2129,30 +2065,27 @@ class ULCalendarApp(ctk.CTk):
                 "Add both screenshots to begin."
             )
 
-    # ------------------------------------------------------------------
-    # Extraction timer
-    # ------------------------------------------------------------------
+
+
+
 
     def _start_timer(self) -> None:
-        """Start a live wall-clock timer on the Tk UI thread."""
         self._timer_started_at = time_module.perf_counter()
         self._timer_running = True
         self.timer_text.set("Time: 0.0s")
         self.after(0, self._tick_timer)
 
     def _tick_timer(self) -> None:
-        """Refresh the visible timer while extraction is still running."""
         if not self._timer_running or self._timer_started_at is None:
             return
 
         elapsed = time_module.perf_counter() - self._timer_started_at
         self.timer_text.set(f"Time: {elapsed:.1f}s")
 
-        # 100 ms gives a visibly live counter without wasting UI work.
+
         self.after(100, self._tick_timer)
 
     def _stop_timer(self) -> float:
-        """Freeze the timer at the exact point extraction completed."""
         if self._timer_started_at is None:
             self._timer_running = False
             return 0.0
@@ -2163,9 +2096,9 @@ class ULCalendarApp(ctk.CTk):
         self.timer_text.set(f"Time: {elapsed:.1f}s")
         return elapsed
 
-    # ------------------------------------------------------------------
-    # Extraction
-    # ------------------------------------------------------------------
+
+
+
 
     @staticmethod
     def _file_signature(path: Path) -> tuple[str, int, int]:
@@ -2289,8 +2222,8 @@ class ULCalendarApp(ctk.CTk):
                     continue
 
                 if kind == "success":
-                    # Extraction is fully complete at this point. Freeze the
-                    # live timer before doing any success UI updates.
+
+
                     elapsed = self._stop_timer()
                     self.extraction = payload
 
@@ -2341,9 +2274,9 @@ class ULCalendarApp(ctk.CTk):
 
         self.after(100, self._drain_queue)
 
-    # ------------------------------------------------------------------
-    # ICS
-    # ------------------------------------------------------------------
+
+
+
 
     def _build_ics(self) -> Path:
         if self.extraction is None:

@@ -1,4 +1,3 @@
-"""Validated data structures used by the calendar creator."""
 
 from datetime import date, datetime
 from typing import Literal

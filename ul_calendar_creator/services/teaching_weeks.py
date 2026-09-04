@@ -1,4 +1,3 @@
-"""Parse and format teaching-week number ranges."""
 
 import re
 
@@ -7,7 +6,6 @@ def parse_week_text(
     week_text: str,
     valid_week_numbers: set[int] | None = None,
 ) -> list[int]:
-    """Convert literal timetable week text into exact week numbers."""
     original = week_text.strip()
 
     text = original.casefold()
@@ -81,7 +79,6 @@ def parse_week_text(
 
 
 def compress_weeks(weeks: list[int]) -> str:
-    """Format week numbers as compact, comma-separated ranges."""
     weeks = sorted(set(weeks))
 
     if not weeks:
