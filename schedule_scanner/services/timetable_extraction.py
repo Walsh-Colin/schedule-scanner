@@ -2,7 +2,7 @@ from datetime import date, datetime
 import hashlib
 from pathlib import Path
 
-import ollama
+from .ollama_client import client as ollama
 from pydantic import BaseModel, ValidationError
 
 try:

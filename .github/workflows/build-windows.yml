@@ -1,0 +1,37 @@
+name: Build Windows installer
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Python build dependencies
+        run: python -m pip install -r packaging/requirements-build.txt
+      - name: Download Ollama runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force packaging/vendor | Out-Null
+          Invoke-WebRequest https://github.com/ollama/ollama/releases/download/v0.33.3/ollama-windows-amd64.zip -OutFile packaging/vendor/ollama.zip
+          Expand-Archive packaging/vendor/ollama.zip packaging/vendor/ollama
+          Invoke-WebRequest https://raw.githubusercontent.com/ollama/ollama/v0.33.3/LICENSE -OutFile packaging/vendor/ollama/LICENSE
+      - name: Build installer
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe -OutFile packaging/vendor/inno-setup.exe
+          $compilerDir = Join-Path $PWD 'packaging/vendor/inno'
+          $install = Start-Process packaging/vendor/inno-setup.exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',('/DIR="' + $compilerDir + '"')) -WindowStyle Hidden -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw 'Compiler installation failed.' }
+          ./packaging/build.ps1 -OllamaDirectory packaging/vendor/ollama -ISCC (Join-Path $compilerDir 'ISCC.exe')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScheduleScanner-Setup-v1.0.0
+          path: release/ScheduleScanner-Setup-v1.0.0.exe
+          if-no-files-found: error

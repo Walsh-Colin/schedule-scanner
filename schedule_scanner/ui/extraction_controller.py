@@ -4,7 +4,10 @@ import sys
 import threading
 import time
 
-import ollama
+try:
+    from ..services.ollama_client import client as ollama
+except ImportError:
+    from services.ollama_client import client as ollama
 
 try:
     from ..services.timetable_extraction import (

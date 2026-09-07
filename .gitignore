@@ -2,3 +2,10 @@
 __pycache__/
 *.py[cod]
 /input/
+.venv/
+.venv-build/
+/build/
+/dist/
+/release/
+/packaging/vendor/
+/ScheduleScanner.spec
