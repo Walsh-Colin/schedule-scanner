@@ -10,6 +10,10 @@ The application uses OpenCV to identify the timetable structure and a local Olla
 
 All screenshot processing happens locally. The application requires no API key and does not connect directly to a calendar account.
 
+The Windows installer build includes Python and a private Ollama runtime. Its setup
+window downloads the AI model with progress and retry support. See the
+[installer build instructions](docs/PROJECT_DOCUMENTATION.md#windows-v100-installer).
+
 ## Features
 
 - Converts timetable and teaching-week screenshots into calendar events

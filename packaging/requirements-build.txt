@@ -1,0 +1,9 @@
+pyinstaller>=6.11,<7
+ollama>=0.4,<1
+pydantic>=2,<3
+icalendar>=6,<8
+opencv-python>=4,<6
+numpy>=2,<3
+Pillow>=11,<13
+customtkinter>=5.2.2,<7
+tzdata

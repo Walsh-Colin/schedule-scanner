@@ -1,0 +1,9 @@
+Schedule Scanner v1.0.0
+
+Setup installs Schedule Scanner and its local Ollama runtime. You do not need Python or a separate Ollama installation.
+
+After the application files are installed, the AI reader setup window will download qwen2.5vl:3b. This requires internet and several GB of free disk space. Download time depends on your connection.
+
+If the download is interrupted, open Schedule Scanner to retry. Once setup is complete, screenshots are processed locally.
+
+Models are stored in %LOCALAPPDATA%\ScheduleScanner\models and retained when you upgrade or uninstall the application.
