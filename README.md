@@ -3,7 +3,7 @@
 <p align="center">
   <img src="schedule_scanner/images/CalGen.png" alt="Schedule Scanner icon" width="240">
 </p>
-
+!WARNING! May have to disable the new Windows Smart App, I have not been able to obtain a certificate.
 Schedule Scanner is a desktop application that converts timetable screenshots into an importable iCalendar (`.ics`) file.
 
 The application uses OpenCV to identify the timetable structure and a local Ollama vision model to read class and teaching-week information. Users can review and edit the detected timetable before exporting it for use with Google Calendar, Outlook, Apple Calendar, and other iCalendar-compatible applications.
