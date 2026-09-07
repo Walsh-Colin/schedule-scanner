@@ -45,7 +45,7 @@ The application accepts PNG, JPEG, and WebP screenshots. Automatic input discove
 
 OpenCV detects long vertical lines to establish day columns, progressively relaxing its line-coverage threshold for partial borders. The header band determines where the timetable body begins. Grid lines are removed, remaining text is grouped into connected regions, and each region is assigned a weekday strictly from its geometry. The vision model does not choose weekdays.
 
-Each class region is padded, cropped, enlarged three times, and encoded as PNG bytes in memory. Layout debugging can be enabled in the layout service; annotated detections are then written to `output/layout_debug.png`.
+Each class region is padded, cropped, enlarged two times, and encoded as PNG bytes in memory. Layout debugging can be enabled in the layout service; annotated detections are then written to `output/layout_debug.png`.
 
 The teaching-week screenshot and individual class crops are processed separately. Ollama responses use Pydantic-generated JSON schemas and are retried up to three times when invalid. Smaller context and output budgets are used for class crops, and the model is kept alive between requests.
 
@@ -70,6 +70,8 @@ The command-line output is `output/classes.ics`. The desktop UI builds a tempora
 ## User interface
 
 The CustomTkinter interface supports screenshot selection, background extraction, progress and timing, cached-result reuse, editable class review, row deletion, validation, and calendar download. A queue returns worker-thread results to the Tk event loop so the interface remains responsive.
+
+The local vision model is preloaded on a background thread when the application starts, allowing model loading to overlap with screenshot selection and reducing cold-start extraction latency.
 
 The artwork in `schedule_scanner/images/CalGen.png` is used in the main header and as the cross-platform window icon. Its `CalGen.ico` variant supplies the Windows title-bar and taskbar icon.
 

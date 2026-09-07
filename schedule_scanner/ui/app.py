@@ -87,6 +87,7 @@ class ScheduleScannerApp(ctk.CTk):
         self.extraction: TimetableExtraction | None = None
         self.generated_ics: Path | None = None
         self.extraction_controller = ExtractionController(HIDDEN_MODEL)
+        self.extraction_controller.preload()
         self.review_view: ReviewView | None = None
         self.timer_text = ctk.StringVar(value="Time: 0.0s")
 
