@@ -183,7 +183,7 @@ class ScheduleScannerApp(ctk.CTk):
 
         self.clear_cache_button = ctk.CTkButton(
             self.header,
-            text="Developer: Clear Cache",
+            text="Clear Cache",
             width=170,
             height=38,
             fg_color="transparent",
@@ -279,7 +279,7 @@ class ScheduleScannerApp(ctk.CTk):
             "Cache cleared. Create the timetable to run a fresh test."
         )
         self._show_main_view()
-        messagebox.showinfo(APP_TITLE, "Developer cache cleared.")
+        messagebox.showinfo(APP_TITLE, "Cache cleared.")
 
 
 
